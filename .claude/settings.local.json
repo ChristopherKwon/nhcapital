@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql --version)",
+      "Bash(brew --version)",
+      "Bash(brew install *)",
+      "Bash(brew services *)",
+      "Bash(node -e ' *)",
+      "Bash(pkill -f \"node src/index.js\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"employeeId\":\"AUTO002\",\"password\":\"Approver1234!\"}')",
+      "Bash(node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const p=JSON.parse\\(d\\); console.log\\('AUTO002 token ok:', !!p.token\\);\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H \"Content-Type: application/json\" -d '{\"employeeId\":\"APR001\",\"password\":\"Approver1234!\"}')",
+      "Bash(pkill -f \"node.*index.js\")",
+      "Bash(curl -s http://localhost:3000/api/auth/login)",
+      "Bash(curl -s http://localhost:3000/)",
+      "Bash(kill -9 15583)",
+      "Bash(pkill -9 -f \"node src/index.js\")",
+      "Bash(curl -s http://127.0.0.1:3000/)",
+      "Bash(curl -s http://localhost:3000/api/common/users/it-team)",
+      "Bash(node -e \"process.stdin.setEncoding\\('utf8'\\);let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>{ const u=JSON.parse\\(d\\); u.forEach\\(x=>console.log\\(x.name, x.role, x.department?.name\\)\\); }\\);\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"employeeId\":\"DEV001\",\"password\":\"Dev1234!\"}')",
+      "Bash(curl -s -H \"Authorization: Bearer $\\(curl -s -X POST http://localhost:3000/api/auth/login -H 'Content-Type: application/json' -d '{\"employeeId\":\"DEV001\",\"password\":\"Dev1234!\"}')",
+      "Bash(node src/server.js)",
+      "Bash(curl -s http://localhost:3000/api/health)",
+      "Bash(grep -n \"^function \\\\$\\\\b\\\\|const \\\\$ \" /Users/pilkyukwon/itsm/public/js/app.js)",
+      "Bash(grep -n \"^const \\\\$\\\\|^function \\\\$\\\\|^\\\\$ =\\\\|^let \\\\$\\\\|^var \\\\$\" /Users/pilkyukwon/itsm/public/js/app.js)"
+    ],
+    "additionalDirectories": [
+      "/private/tmp"
+    ]
+  }
+}

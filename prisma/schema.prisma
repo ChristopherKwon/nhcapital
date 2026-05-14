@@ -1,0 +1,728 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  APPROVER
+  DEVELOPER
+  MANAGER
+  ADMIN
+}
+
+enum TicketStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum StageActionType {
+  SUBMIT
+  APPROVE
+  WORK
+  CONFIRM
+  CONSENSUS
+  COLLABORATE
+  PARALLEL_APPROVE
+  COMBINED_WORK
+}
+
+enum ApprovalAction {
+  APPROVED
+  REJECTED
+  RETURNED
+  COMPLETED
+}
+
+enum ConsensusStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RelationType {
+  RELATED_TO
+  PARENT_OF
+  CHILD_OF
+  DUPLICATES
+  BLOCKED_BY
+}
+
+enum NotificationType {
+  TICKET_CREATED
+  STAGE_CHANGED
+  APPROVAL_REQUESTED
+  APPROVAL_COMPLETED
+  CONSENSUS_REQUESTED
+  TICKET_COMPLETED
+  TICKET_REJECTED
+  COMMENT_ADDED
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  userName    String?
+  userRole    String?
+  action      String
+  entityType  String?
+  entityId    String?
+  entityLabel String?
+  oldValues   Json?
+  newValues   Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+enum DeploymentStatus {
+  DRAFT
+  READY
+  DEPLOYED
+  FAILED
+  ROLLBACK
+  CANCELLED
+}
+
+enum DeployResultStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+  ROLLBACK
+}
+
+enum RequirementStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TestCaseStatus {
+  DRAFT
+  READY
+  PASS
+  FAIL
+  BLOCKED
+}
+
+enum TestResultStatus {
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
+enum DefectSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum DefectStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REJECTED
+}
+
+enum ProgramType {
+  SCREEN
+  INTERFACE
+  MODULE
+  QUERY
+}
+
+enum ImpactLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  code      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  users              User[]
+  consensusRequests  TicketConsensus[]
+  requiredConsensus  WorkflowStage[]    @relation("StageRequiredDept")
+  handlerStages      WorkflowStage[]    @relation("StageHandlerDept")
+
+  @@map("departments")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  employeeId   String   @unique
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  departmentId String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department         Department?       @relation(fields: [departmentId], references: [id])
+  tickets            Ticket[]          @relation("Requester")
+  assignedTickets    Ticket[]          @relation("Assignee")
+  itBaTickets        Ticket[]          @relation("ITBAUser")
+  managedTickets     Ticket[]          @relation("TicketManager")
+  developerTickets   TicketDeveloper[]
+  stageHistories     TicketStageHistory[]
+  consensusApprovals TicketConsensus[] @relation("ConsensusApprover")
+  notifications      Notification[]
+  comments           TicketComment[]
+  attachments        TicketAttachment[]
+  createdRelations   TicketRelation[]  @relation("RelationCreator")
+  testCases          TestCase[]
+  testResults        TestResult[]
+  reportedDefects    Defect[]          @relation("DefectReporter")
+  assignedDefects    Defect[]          @relation("DefectAssignee")
+  requirements       Requirement[]     @relation("RequirementCreator")
+  requirementChanges RequirementHistory[] @relation("RequirementChanger")
+  programImpacts     ProgramImpact[]      @relation("ProgramImpactCreator")
+  requirementAnnotations RequirementAnnotation[] @relation("AnnotationCreator")
+  requirementFiles   RequirementFile[]    @relation("RequirementFileUploader")
+  requirementComments RequirementComment[] @relation("ReqCommentAuthor")
+  watchingTickets    TicketWatcher[]      @relation("WatcherUser")
+  addedWatchers      TicketWatcher[]      @relation("WatcherAdder")
+  parallelApprovals  ParallelApproval[]   @relation("ParallelApprover")
+  combinedWorkAttachments CombinedWorkAttachment[] @relation("CombinedWorkUploader")
+  deploymentPlans    DeploymentPlan[]  @relation("DeploymentCreator")
+  checkedItems       DeployChecklistItem[] @relation("ChecklistChecker")
+  deploymentResults  DeploymentResult[] @relation("DeploymentExecutor")
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model TicketType {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workflowStages WorkflowStage[]
+  tickets        Ticket[]
+
+  @@map("ticket_types")
+}
+
+model WorkflowStage {
+  id                 String          @id @default(uuid())
+  ticketTypeId       String
+  stageOrder         Int
+  name               String
+  description        String?
+  requiredRole       Role
+  actionType         StageActionType
+  isRequesterStage   Boolean         @default(false)
+  isActive           Boolean         @default(true)
+  requiredDepartmentId String?
+  handlerDeptId      String?
+  slaTargetHours     Int?
+
+  ticketType           TicketType          @relation(fields: [ticketTypeId], references: [id])
+  requiredDepartment   Department?         @relation("StageRequiredDept", fields: [requiredDepartmentId], references: [id])
+  handlerDept          Department?         @relation("StageHandlerDept", fields: [handlerDeptId], references: [id])
+  stageHistories       TicketStageHistory[]
+  currentTickets       Ticket[]
+
+  @@unique([ticketTypeId, stageOrder])
+  @@map("workflow_stages")
+}
+
+model Ticket {
+  id             String       @id @default(uuid())
+  ticketNumber   String       @unique
+  ticketTypeId   String
+  title          String
+  description    String
+  requesterId    String
+  assigneeId     String?
+  currentStageId String?
+  status         TicketStatus @default(IN_PROGRESS)
+  priority       String       @default("MEDIUM")
+  dueDate        DateTime?
+  subCategory    String?
+  targetSystem   String?
+  businessDomain String?
+  itBaId         String?
+  managerId      String?
+  embedding      Unsupported("vector(1536)")?
+  aiEstimatedDifficulty String?
+  aiEstimatedDays       String?
+  aiDifficultyReason    String?
+  finalDifficulty       String?
+  externalInterfaceCount String?
+  dbChangeRequired      Boolean?
+  itbaDifficultyOverride String?
+  isCustomerFacing      Boolean?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  ticketType           TicketType              @relation(fields: [ticketTypeId], references: [id])
+  requester            User                    @relation("Requester", fields: [requesterId], references: [id])
+  assignee             User?                   @relation("Assignee", fields: [assigneeId], references: [id])
+  itBa                 User?                   @relation("ITBAUser", fields: [itBaId], references: [id])
+  manager              User?                   @relation("TicketManager", fields: [managerId], references: [id])
+  currentStage         WorkflowStage?          @relation(fields: [currentStageId], references: [id])
+  stageHistories       TicketStageHistory[]
+  consensus            TicketConsensus[]
+  comments             TicketComment[]
+  attachments          TicketAttachment[]
+  notifications        Notification[]
+  relations            TicketRelation[]        @relation("TicketRelations")
+  relatedTo            TicketRelation[]        @relation("RelatedTickets")
+  testCases            TestCase[]
+  defects              Defect[]
+  requirements         Requirement[]
+  deploymentPlans      DeploymentPlan[]
+  developers           TicketDeveloper[]
+  programImpacts       ProgramImpact[]
+  collaborationConsensus CollaborationConsensus?
+  parallelApprovals    ParallelApproval[]
+  combinedWorkLog      CombinedWorkLog?
+  watchers             TicketWatcher[]
+
+  @@map("tickets")
+}
+
+model TicketWatcher {
+  id        String   @id @default(uuid())
+  ticketId  String
+  userId    String
+  addedById String
+  createdAt DateTime @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  user     User   @relation("WatcherUser", fields: [userId], references: [id])
+  addedBy  User   @relation("WatcherAdder", fields: [addedById], references: [id])
+
+  @@unique([ticketId, userId])
+  @@map("ticket_watchers")
+}
+
+model TicketDeveloper {
+  id          String    @id @default(uuid())
+  ticketId    String
+  userId      String
+  assignedAt  DateTime  @default(now())
+  completedAt DateTime?
+
+  ticket      Ticket    @relation(fields: [ticketId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([ticketId, userId])
+  @@map("ticket_developers")
+}
+
+model TicketStageHistory {
+  id        String         @id @default(uuid())
+  ticketId  String
+  stageId   String
+  actorId   String
+  action         ApprovalAction
+  comment        String?
+  elapsedMinutes Int?
+  slaExceededYn  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  ticket      Ticket        @relation(fields: [ticketId], references: [id])
+  stage       WorkflowStage @relation(fields: [stageId], references: [id])
+  actor       User          @relation(fields: [actorId], references: [id])
+  attachments TicketAttachment[]
+
+  @@map("ticket_stage_histories")
+}
+
+model TicketConsensus {
+  id           String          @id @default(uuid())
+  ticketId     String
+  departmentId String?
+  approverId   String?
+  isMandatory  Boolean         @default(false)
+  status       ConsensusStatus @default(PENDING)
+  comment      String?
+  requestedAt  DateTime        @default(now())
+  respondedAt  DateTime?
+
+  ticket     Ticket      @relation(fields: [ticketId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  approver   User?       @relation("ConsensusApprover", fields: [approverId], references: [id])
+
+  @@map("ticket_consensus")
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@map("ticket_comments")
+}
+
+model TicketAttachment {
+  id             String   @id @default(uuid())
+  ticketId       String
+  stageHistoryId String?
+  fileName       String
+  filePath       String
+  fileSize       Int
+  mimeType       String
+  uploadedById   String
+  createdAt      DateTime @default(now())
+
+  ticket       Ticket              @relation(fields: [ticketId], references: [id])
+  stageHistory TicketStageHistory? @relation(fields: [stageHistoryId], references: [id])
+  uploadedBy   User                @relation(fields: [uploadedById], references: [id])
+
+  @@map("ticket_attachments")
+}
+
+model TicketRelation {
+  id              String       @id @default(uuid())
+  ticketId        String
+  relatedTicketId String
+  relationType    RelationType @default(RELATED_TO)
+  createdById     String
+  createdAt       DateTime     @default(now())
+
+  ticket        Ticket @relation("TicketRelations", fields: [ticketId], references: [id])
+  relatedTicket Ticket @relation("RelatedTickets", fields: [relatedTicketId], references: [id])
+  createdBy     User   @relation("RelationCreator", fields: [createdById], references: [id])
+
+  @@unique([ticketId, relatedTicketId])
+  @@map("ticket_relations")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  ticketId  String?
+  type      NotificationType
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  ticket Ticket? @relation(fields: [ticketId], references: [id])
+
+  @@map("notifications")
+}
+
+model TestCase {
+  id             String         @id @default(uuid())
+  ticketId       String
+  title          String
+  preconditions  String?
+  testSteps      String
+  expectedResult String
+  priority       String         @default("MEDIUM")
+  status         TestCaseStatus @default(DRAFT)
+  createdById    String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  ticket      Ticket       @relation(fields: [ticketId], references: [id])
+  createdBy   User         @relation(fields: [createdById], references: [id])
+  testResults TestResult[]
+
+  @@map("test_cases")
+}
+
+model TestResult {
+  id           String           @id @default(uuid())
+  testCaseId   String
+  testerId     String
+  status       TestResultStatus
+  actualResult String?
+  comment      String?
+  executedAt   DateTime         @default(now())
+
+  testCase    TestCase               @relation(fields: [testCaseId], references: [id])
+  tester      User                   @relation(fields: [testerId], references: [id])
+  defects     Defect[]
+  attachments TestResultAttachment[]
+
+  @@map("test_results")
+}
+
+model TestResultAttachment {
+  id           String     @id @default(uuid())
+  testResultId String
+  filename     String
+  originalName String
+  mimetype     String?
+  size         Int?
+  createdAt    DateTime   @default(now())
+
+  testResult   TestResult @relation(fields: [testResultId], references: [id])
+
+  @@map("test_result_attachments")
+}
+
+model Defect {
+  id           String        @id @default(uuid())
+  ticketId     String
+  testResultId String?
+  title        String
+  description  String
+  severity     DefectSeverity @default(MEDIUM)
+  status       DefectStatus   @default(OPEN)
+  reporterId   String
+  assigneeId   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  ticket     Ticket      @relation(fields: [ticketId], references: [id])
+  testResult TestResult? @relation(fields: [testResultId], references: [id])
+  reporter   User        @relation("DefectReporter", fields: [reporterId], references: [id])
+  assignee   User?       @relation("DefectAssignee", fields: [assigneeId], references: [id])
+
+  @@map("defects")
+}
+
+model Requirement {
+  id          String            @id @default(uuid())
+  ticketId    String
+  title       String
+  description String?
+  status      RequirementStatus @default(ACTIVE)
+  version     Int               @default(1)
+  createdById String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  ticket      Ticket                  @relation(fields: [ticketId], references: [id])
+  createdBy   User                    @relation("RequirementCreator", fields: [createdById], references: [id])
+  histories   RequirementHistory[]
+  annotations RequirementAnnotation[]
+  files       RequirementFile[]
+  comments    RequirementComment[]
+
+  @@map("requirements")
+}
+
+model RequirementComment {
+  id            String   @id @default(uuid())
+  requirementId String
+  content       String
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  requirement Requirement @relation(fields: [requirementId], references: [id])
+  createdBy   User        @relation("ReqCommentAuthor", fields: [createdById], references: [id])
+
+  @@map("requirement_comments")
+}
+
+model RequirementFile {
+  id            String   @id @default(uuid())
+  requirementId String
+  filename      String
+  originalName  String
+  mimetype      String
+  size          Int
+  uploadedById  String
+  createdAt     DateTime @default(now())
+
+  requirement Requirement @relation(fields: [requirementId], references: [id])
+  uploadedBy  User        @relation("RequirementFileUploader", fields: [uploadedById], references: [id])
+
+  @@map("requirement_files")
+}
+
+model RequirementHistory {
+  id            String   @id @default(uuid())
+  requirementId String
+  version       Int
+  title         String
+  description   String?
+  changedById   String
+  changeNote    String?
+  changedAt     DateTime @default(now())
+
+  requirement Requirement @relation(fields: [requirementId], references: [id])
+  changedBy   User        @relation("RequirementChanger", fields: [changedById], references: [id])
+
+  @@map("requirement_histories")
+}
+
+model DeploymentPlan {
+  id           String           @id @default(uuid())
+  ticketId     String           @unique
+  deployTarget String
+  deployType   String
+  plannedAt    DateTime
+  description  String
+  status       DeploymentStatus @default(DRAFT)
+  createdById  String
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  ticket     Ticket                @relation(fields: [ticketId], references: [id])
+  createdBy  User                  @relation("DeploymentCreator", fields: [createdById], references: [id])
+  checklist  DeployChecklistItem[]
+  result     DeploymentResult?
+
+  @@map("deployment_plans")
+}
+
+model DeployChecklistItem {
+  id               String    @id @default(uuid())
+  deploymentPlanId String
+  category         String
+  itemText         String
+  isMandatory      Boolean   @default(true)
+  displayOrder     Int
+  isChecked        Boolean   @default(false)
+  checkedById      String?
+  checkedAt        DateTime?
+  note             String?
+
+  deploymentPlan DeploymentPlan @relation(fields: [deploymentPlanId], references: [id])
+  checkedBy      User?          @relation("ChecklistChecker", fields: [checkedById], references: [id])
+
+  @@map("deploy_checklist_items")
+}
+
+model DeploymentResult {
+  id               String             @id @default(uuid())
+  deploymentPlanId String             @unique
+  status           DeployResultStatus
+  deployedAt       DateTime           @default(now())
+  deployedById     String
+  resultNote       String?
+  rollbackNote     String?
+
+  deploymentPlan DeploymentPlan @relation(fields: [deploymentPlanId], references: [id])
+  deployedBy     User           @relation("DeploymentExecutor", fields: [deployedById], references: [id])
+
+  @@map("deployment_results")
+}
+
+model ProgramImpact {
+  id              String      @id @default(uuid())
+  ticketId        String
+  programType     ProgramType
+  programName     String
+  isNew           Boolean     @default(true)
+  description     String?
+  impactLevel     ImpactLevel @default(MEDIUM)
+  impactScope     String?
+  createdById     String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  ticket      Ticket @relation(fields: [ticketId], references: [id])
+  createdBy   User   @relation("ProgramImpactCreator", fields: [createdById], references: [id])
+
+  @@map("program_impacts")
+}
+
+model RequirementAnnotation {
+  id            String   @id @default(uuid())
+  requirementId String
+  imageData     String   @db.Text
+  shapes        Json     @default("[]")
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  requirement Requirement @relation(fields: [requirementId], references: [id])
+  createdBy   User        @relation("AnnotationCreator", fields: [createdById], references: [id])
+
+  @@map("requirement_annotations")
+}
+
+model CollaborationConsensus {
+  id                String    @id @default(uuid())
+  ticketId          String    @unique
+  requesterAgreed   Boolean   @default(false)
+  itBaAgreed        Boolean   @default(false)
+  requesterAgreedAt DateTime?
+  itBaAgreedAt      DateTime?
+  resetAt           DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+
+  @@map("collaboration_consensus")
+}
+
+model ParallelApproval {
+  id          String         @id @default(uuid())
+  ticketId    String
+  stageId     String
+  approverId  String
+  role        String
+  action      ApprovalAction?
+  comment     String?
+  actedAt     DateTime?
+  createdAt   DateTime       @default(now())
+
+  ticket   Ticket        @relation(fields: [ticketId], references: [id])
+  approver User          @relation("ParallelApprover", fields: [approverId], references: [id])
+
+  @@unique([ticketId, approverId])
+  @@map("parallel_approvals")
+}
+
+model CombinedWorkLog {
+  id               String    @id @default(uuid())
+  ticketId         String    @unique
+  devCompletedAt   DateTime?
+  testCompletedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  ticket      Ticket                @relation(fields: [ticketId], references: [id])
+  attachments CombinedWorkAttachment[]
+
+  @@map("combined_work_logs")
+}
+
+model CombinedWorkAttachment {
+  id            String   @id @default(uuid())
+  workLogId     String
+  type          String
+  filename      String
+  originalName  String
+  mimetype      String?
+  size          Int?
+  uploadedById  String
+  createdAt     DateTime @default(now())
+
+  workLog      CombinedWorkLog @relation(fields: [workLogId], references: [id])
+  uploadedBy   User            @relation("CombinedWorkUploader", fields: [uploadedById], references: [id])
+
+  @@map("combined_work_attachments")
+}

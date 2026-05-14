@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ITSM - IT 서비스 관리 시스템</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+  <!-- 로그인 화면 -->
+  <div id="login-screen" class="hidden min-h-screen flex">
+
+    <!-- ── 왼쪽 패널: NH 브랜드 ── -->
+    <div class="hidden lg:flex lg:w-[58%] flex-col relative overflow-hidden nh-left-panel">
+
+      <!-- 육각형 배경 패턴 -->
+      <svg class="absolute inset-0 w-full h-full" style="opacity:0.06" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="hex-bg" x="0" y="0" width="60" height="52" patternUnits="userSpaceOnUse">
+            <polygon points="15,2 45,2 60,26 45,50 15,50 0,26" fill="none" stroke="white" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#hex-bg)"/>
+      </svg>
+
+      <!-- IT 네트워크 SVG 애니메이션 -->
+      <svg class="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg" style="pointer-events:none">
+        <!-- 연결선 -->
+        <g stroke="#4ade80" stroke-width="0.8" opacity="0.25">
+          <line x1="18%" y1="22%" x2="38%" y2="36%"/>
+          <line x1="38%" y1="36%" x2="63%" y2="24%"/>
+          <line x1="63%" y1="24%" x2="82%" y2="42%"/>
+          <line x1="38%" y1="36%" x2="28%" y2="62%"/>
+          <line x1="28%" y1="62%" x2="52%" y2="72%"/>
+          <line x1="52%" y1="72%" x2="76%" y2="63%"/>
+          <line x1="63%" y1="24%" x2="52%" y2="72%"/>
+          <line x1="82%" y1="42%" x2="76%" y2="63%"/>
+          <line x1="18%" y1="22%" x2="28%" y2="62%"/>
+          <line x1="82%" y1="42%" x2="87%" y2="78%"/>
+          <line x1="76%" y1="63%" x2="87%" y2="78%"/>
+          <line x1="52%" y1="72%" x2="87%" y2="78%"/>
+        </g>
+        <!-- 흐르는 데이터 입자 -->
+        <circle r="2.5" fill="#86efac" opacity="0.8">
+          <animateMotion dur="4s" repeatCount="indefinite">
+            <mpath href="#path1"/>
+          </animateMotion>
+        </circle>
+        <circle r="2" fill="#4ade80" opacity="0.6">
+          <animateMotion dur="6s" repeatCount="indefinite" begin="2s">
+            <mpath href="#path2"/>
+          </animateMotion>
+        </circle>
+        <defs>
+          <path id="path1" d="M 18% 22% Q 38% 36% 63% 24% T 82% 42%"/>
+          <path id="path2" d="M 28% 62% Q 52% 72% 76% 63% T 87% 78%"/>
+        </defs>
+        <!-- 노드 그룹 (CSS 애니메이션 적용) -->
+        <g class="net-node-lg" style="transform-origin:38% 36%">
+          <circle cx="38%" cy="36%" r="7" fill="#22c55e" opacity="0.85"/>
+          <circle cx="38%" cy="36%" r="13" fill="#22c55e" opacity="0.12"/>
+          <circle cx="38%" cy="36%" r="20" fill="#22c55e" opacity="0.05"/>
+        </g>
+        <g class="net-node-lg" style="transform-origin:52% 72%; animation-delay:1s">
+          <circle cx="52%" cy="72%" r="6" fill="#22c55e" opacity="0.8"/>
+          <circle cx="52%" cy="72%" r="11" fill="#22c55e" opacity="0.12"/>
+        </g>
+        <g class="net-node-md" style="transform-origin:63% 24%">
+          <circle cx="63%" cy="24%" r="4.5" fill="#86efac" opacity="0.75"/>
+          <circle cx="63%" cy="24%" r="9" fill="#86efac" opacity="0.1"/>
+        </g>
+        <g class="net-node-md" style="transform-origin:76% 63%; animation-delay:1.5s">
+          <circle cx="76%" cy="63%" r="4.5" fill="#86efac" opacity="0.7"/>
+          <circle cx="76%" cy="63%" r="9" fill="#86efac" opacity="0.1"/>
+        </g>
+        <g class="net-node-sm" style="transform-origin:18% 22%">
+          <circle cx="18%" cy="22%" r="3" fill="#bbf7d0" opacity="0.65"/>
+        </g>
+        <g class="net-node-sm" style="transform-origin:82% 42%; animation-delay:0.8s">
+          <circle cx="82%" cy="42%" r="3" fill="#bbf7d0" opacity="0.6"/>
+        </g>
+        <g class="net-node-sm" style="transform-origin:28% 62%; animation-delay:2s">
+          <circle cx="28%" cy="62%" r="3" fill="#bbf7d0" opacity="0.6"/>
+        </g>
+        <g class="net-node-sm" style="transform-origin:87% 78%; animation-delay:0.4s">
+          <circle cx="87%" cy="78%" r="2.5" fill="#bbf7d0" opacity="0.5"/>
+        </g>
+      </svg>
+
+      <!-- 콘텐츠 레이어 -->
+      <!-- 상단 로고 -->
+      <div class="relative z-10 p-10 flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center" style="background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2)">
+          <svg class="w-7 h-7" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 3C14 3 5 7.5 5 16.5C5 21.5 9 25 14 25C19 25 23 21.5 23 16.5C23 7.5 14 3 14 3Z" fill="#4ade80"/>
+            <line x1="14" y1="25" x2="14" y2="11" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="14" y1="17" x2="9.5" y2="12.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="14" y1="20" x2="18.5" y2="15.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-white font-bold text-lg tracking-tight">농협캐피탈</div>
+          <div class="text-[10px] tracking-[0.18em] uppercase font-medium" style="color:#86efac">NH Capital Co., Ltd.</div>
+        </div>
+      </div>
+
+      <!-- 메인 텍스트 -->
+      <div class="relative z-10 flex-1 flex flex-col justify-center px-10 pb-12">
+        <div class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium mb-7 w-fit" style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);color:#86efac">
+          <span class="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+          IT Service Management Portal
+        </div>
+
+        <h1 class="font-bold leading-[1.2] mb-5 text-white" style="font-size:2.7rem">
+          더 스마트한<br/>
+          <span style="color:#4ade80">IT 서비스</span><br/>
+          관리를 시작하세요
+        </h1>
+
+        <p class="text-sm leading-relaxed mb-10 max-w-xs" style="color:rgba(187,247,208,0.75)">
+          농협캐피탈 임직원을 위한 통합 IT 요청 관리 플랫폼.<br/>
+          티켓 등록부터 개발·배포까지 한 곳에서 관리하세요.
+        </p>
+
+        <!-- 기능 하이라이트 -->
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(34,197,94,0.2);border:1px solid rgba(74,222,128,0.25)">
+              <svg class="w-4 h-4" fill="none" stroke="#4ade80" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            </div>
+            <span class="text-sm" style="color:rgba(220,252,231,0.85)">단계별 결재 워크플로우 관리</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(34,197,94,0.2);border:1px solid rgba(74,222,128,0.25)">
+              <svg class="w-4 h-4" fill="none" stroke="#4ade80" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+            </div>
+            <span class="text-sm" style="color:rgba(220,252,231,0.85)">실시간 알림 및 처리 현황 추적</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background:rgba(34,197,94,0.2);border:1px solid rgba(74,222,128,0.25)">
+              <svg class="w-4 h-4" fill="none" stroke="#4ade80" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </div>
+            <span class="text-sm" style="color:rgba(220,252,231,0.85)">SLA 현황 및 통계 대시보드</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 하단 -->
+      <div class="relative z-10 px-10 py-5" style="border-top:1px solid rgba(255,255,255,0.1)">
+        <p class="text-xs" style="color:rgba(74,222,128,0.45)">© 2026 농협캐피탈. All rights reserved. &nbsp;|&nbsp; 본 시스템은 임직원 전용입니다.</p>
+      </div>
+    </div>
+
+    <!-- ── 오른쪽 패널: 로그인 폼 ── -->
+    <div class="flex-1 flex items-center justify-center bg-white p-8 lg:p-14">
+      <div class="w-full max-w-[380px]">
+
+        <!-- 모바일 전용 로고 -->
+        <div class="lg:hidden flex flex-col items-center mb-8">
+          <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-3 nh-logo-btn">
+            <svg class="w-8 h-8" viewBox="0 0 28 28" fill="none">
+              <path d="M14 3C14 3 5 7.5 5 16.5C5 21.5 9 25 14 25C19 25 23 21.5 23 16.5C23 7.5 14 3 14 3Z" fill="white"/>
+              <line x1="14" y1="25" x2="14" y2="11" stroke="#14532d" stroke-width="1.8" stroke-linecap="round"/>
+              <line x1="14" y1="17" x2="9.5" y2="12.5" stroke="#14532d" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="text-gray-800 font-bold text-lg">농협캐피탈</div>
+        </div>
+
+        <div class="mb-8">
+          <h2 class="text-2xl font-bold text-gray-900 mb-1">환영합니다</h2>
+          <p class="text-gray-400 text-sm">사번과 비밀번호로 로그인하세요</p>
+        </div>
+
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">사번</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+              </div>
+              <input type="text" id="login-employee-id" placeholder="사번을 입력하세요" autocomplete="username"
+                class="nh-input w-full pl-10 pr-4 py-3 rounded-xl text-sm text-gray-900 placeholder-gray-400 transition-all" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1.5">비밀번호</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              </div>
+              <input type="password" id="login-password" placeholder="비밀번호를 입력하세요" autocomplete="current-password"
+                class="nh-input w-full pl-10 pr-4 py-3 rounded-xl text-sm text-gray-900 placeholder-gray-400 transition-all" />
+            </div>
+          </div>
+
+          <div id="login-error" class="hidden text-red-600 text-sm bg-red-50 border border-red-100 rounded-xl px-4 py-3"></div>
+
+          <button type="submit" class="nh-btn w-full py-3 rounded-xl text-white font-semibold text-sm transition-all duration-200 mt-1">
+            로그인
+          </button>
+        </form>
+
+        <!-- 보안 안내 -->
+        <div class="mt-5 flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+          <svg class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          <p class="text-xs text-amber-700 leading-relaxed">농협캐피탈 임직원 전용 시스템입니다. 비인가 접속은 보안 정책에 따라 처리됩니다.</p>
+        </div>
+
+        <!-- 빠른 로그인 -->
+        <div class="mt-5">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="flex-1 h-px bg-gray-100"></div>
+            <span class="text-xs text-gray-400 font-medium px-2">시현용 빠른 로그인</span>
+            <div class="flex-1 h-px bg-gray-100"></div>
+          </div>
+          <div class="space-y-2">
+
+            <div>
+              <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">요청자 (USER)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="quickLogin('AUTO001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-green-50 hover:border-green-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">오토사원</span><span class="text-gray-400 ml-1">AUTO001 · 오토금융부</span>
+                </button>
+                <button onclick="quickLogin('USR001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-green-50 hover:border-green-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">박사원</span><span class="text-gray-400 ml-1">USR001 · 인사팀</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">부서장 (APPROVER)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="quickLogin('AUTO002')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">오토팀장</span><span class="text-gray-400 ml-1">AUTO002 · 오토금융부</span>
+                </button>
+                <button onclick="quickLogin('APR001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">IT팀장</span><span class="text-gray-400 ml-1">APR001 · IT개발팀</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">IT BA / 개발자 (DEVELOPER)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="quickLogin('DEV001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-purple-50 hover:border-purple-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">김개발</span><span class="text-gray-400 ml-1">DEV001 · IT BA</span>
+                </button>
+                <button onclick="quickLogin('DEV002')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-purple-50 hover:border-purple-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">이개발</span><span class="text-gray-400 ml-1">DEV002 · 개발자</span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">IT 책임자 (MANAGER)</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button onclick="quickLogin('MGR001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-orange-50 hover:border-orange-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">IT책임자</span><span class="text-gray-400 ml-1">MGR001</span>
+                </button>
+                <button onclick="quickLogin('ADMIN001')" class="quick-login-btn bg-gray-50 border border-gray-200 hover:bg-red-50 hover:border-red-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg transition-all">
+                  <span class="font-semibold">시스템관리자</span><span class="text-gray-400 ml-1">ADMIN001</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <p class="mt-5 text-center text-xs text-gray-400">
+          계정 문의: IT개발팀 내선 <span class="text-gray-600 font-semibold">1234</span>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 앱 -->
+  <div id="app" class="hidden flex h-screen overflow-hidden">
+
+    <!-- 사이드바 -->
+    <aside class="w-64 nh-sidebar text-white flex flex-col shrink-0">
+      <div class="px-6 py-5 flex items-center gap-3" style="border-bottom:1px solid rgba(255,255,255,0.1)">
+        <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:rgba(255,255,255,0.15)">
+          <svg class="w-5 h-5" viewBox="0 0 28 28" fill="none">
+            <path d="M14 3C14 3 5 7.5 5 16.5C5 21.5 9 25 14 25C19 25 23 21.5 23 16.5C23 7.5 14 3 14 3Z" fill="#4ade80"/>
+            <line x1="14" y1="25" x2="14" y2="11" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="14" y1="17" x2="9.5" y2="12.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+            <line x1="14" y1="20" x2="18.5" y2="15.5" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-sm font-bold tracking-tight">농협캐피탈 ITSM</div>
+          <div class="text-[10px] font-medium" style="color:rgba(134,239,172,0.8)">IT Service Management</div>
+        </div>
+      </div>
+      <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <a href="#" data-page="dashboard" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+          <svg class="w-4.5 h-4.5 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          대시보드
+        </a>
+        <a href="#" data-page="tickets" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          티켓 목록
+        </a>
+        <a href="#" data-page="create-ticket" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          티켓 등록
+        </a>
+        <div id="admin-menu" class="hidden">
+          <div class="text-xs font-semibold uppercase tracking-wider px-3 pt-5 pb-2" style="color:rgba(134,239,172,0.6)">관리자</div>
+          <a href="#" data-page="admin-dashboard" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            현황 대시보드
+          </a>
+          <a href="#" data-page="admin-users" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            사용자 관리
+          </a>
+          <a href="#" data-page="admin-defects" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            결함 관리
+          </a>
+          <a href="#" data-page="admin-deployments" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
+            이관 현황
+          </a>
+          <a href="#" data-page="admin-audit" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm" style="color:rgba(255,255,255,0.75)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+            감사 로그
+          </a>
+        </div>
+      </nav>
+      <div class="px-4 py-4" style="border-top:1px solid rgba(255,255,255,0.1)">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style="background:rgba(74,222,128,0.25);color:#4ade80" id="user-avatar">U</div>
+          <div class="flex-1 min-w-0">
+            <div id="user-name" class="text-sm font-medium truncate text-white"></div>
+            <div id="user-role" class="text-xs truncate" style="color:rgba(134,239,172,0.75)"></div>
+          </div>
+          <button id="logout-btn" title="로그아웃" class="hover:text-white transition" style="color:rgba(255,255,255,0.4)">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 메인 콘텐츠 -->
+    <main class="flex-1 overflow-y-auto">
+
+      <!-- 상단 헤더 -->
+      <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+        <h1 id="page-title" class="text-lg font-semibold text-gray-800"></h1>
+        <div class="flex items-center gap-3">
+          <!-- 알림 버튼 -->
+          <div class="relative">
+            <button id="notification-btn" class="relative p-2 rounded-lg hover:bg-gray-100 transition">
+              <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+              <span id="notification-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold"></span>
+            </button>
+            <!-- 알림 드롭다운 -->
+            <div id="notification-dropdown" class="hidden absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+              <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <span class="font-semibold text-sm">알림</span>
+                <button id="read-all-btn" class="text-blue-600 text-xs hover:underline">모두 읽음</button>
+              </div>
+              <div id="notification-list" class="max-h-80 overflow-y-auto divide-y divide-gray-50"></div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- 페이지 콘텐츠 -->
+      <div id="page-content" class="p-6"></div>
+    </main>
+  </div>
+
+  <!-- 모달 -->
+  <div id="modal-overlay" class="hidden fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+    <div id="modal-content" class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"></div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
+
+  <script src="/js/app.js?v=20260511b"></script>
+</body>
+</html>
