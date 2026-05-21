@@ -56,6 +56,11 @@
 - [Node.js](https://nodejs.org) v18 이상 ([다운로드](https://nodejs.org/en/download))
 - [PostgreSQL](https://www.postgresql.org/download) v14 이상
 
+> **git hook 설정 (최초 1회)** — Push 전 마이그레이션 누락을 자동으로 경고합니다.
+> ```bash
+> git config core.hooksPath .githooks
+> ```
+
 ### 1. 프로젝트 받기
 
 ```bash
@@ -153,11 +158,49 @@ npm run dev
 
 ---
 
-## 유용한 명령어
+## ⚠️ DB 변경 시 필수 절차 (Push 전 반드시 확인)
+
+**`prisma/schema.prisma`를 수정하거나 DB에 직접 SQL을 실행했다면, 반드시 마이그레이션 파일을 만들고 커밋한 뒤 Push하세요.**
+
+### 규칙
+
+| 상황 | 해야 할 일 |
+|------|-----------|
+| `schema.prisma` 수정 | `npm run db:migrate` 실행 → 생성된 migration 파일 커밋 |
+| 직접 SQL 실행 (ALTER, CREATE 등) | `prisma/migrations/` 아래 수동 migration 파일 작성 후 `npx prisma migrate resolve --applied <migration_name>` 실행 |
+| migration 파일 없이 Push | ❌ **금지** — 다른 환경에서 DB 동기화 불가 |
+
+### 마이그레이션 파일 작성 규칙
+
+```
+prisma/migrations/
+└── YYYYMMDDHHMMSS_변경내용_요약/
+    └── migration.sql   ← 변경된 SQL + 상단에 주석으로 변경 이력 기재
+```
+
+**migration.sql 상단 주석 필수 항목:**
+```sql
+-- Migration : YYYYMMDDHHMMSS_변경내용_요약
+-- Branch    : 브랜치명
+-- Date      : YYYY-MM-DD
+-- Author    : 작성자
+-- 변경 내용 : 한 줄 요약
+```
+
+### 자주 쓰는 명령어
 
 ```bash
-# DB 마이그레이션 생성 (스키마 변경 시)
+# schema.prisma 수정 후 마이그레이션 생성 + 적용 (개발 환경)
 npm run db:migrate
+
+# 직접 SQL을 실행한 경우 — Prisma에 "이미 적용됨" 표시
+npx prisma migrate resolve --applied <migration_name>
+
+# 운영 환경 마이그레이션 적용
+npx prisma migrate deploy
+
+# 현재 마이그레이션 상태 확인
+npx prisma migrate status
 
 # 초기 데이터 재입력
 npm run db:seed

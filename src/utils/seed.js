@@ -15,44 +15,63 @@ async function main() {
     prisma.department.upsert({ where: { code: 'HR' }, update: {}, create: { name: '인사팀', code: 'HR' } }),
     prisma.department.upsert({ where: { code: 'FIN' }, update: {}, create: { name: '재무팀', code: 'FIN' } }),
     prisma.department.upsert({ where: { code: 'OPS' }, update: {}, create: { name: '운영팀', code: 'OPS' } }),
+    prisma.department.upsert({ where: { code: 'AUTO' }, update: {}, create: { name: '오토금융부', code: 'AUTO' } }),
   ]);
-  const [itDept, dbDept, hrDept] = departments;
+  const [itDept, dbDept, hrDept, finDept, opsDept, autoDept] = departments;
 
   // 사용자 생성
   const hash = (pw) => bcrypt.hash(pw, 12);
   const [admin, mgr, apr1, apr2, dev1, dev2, usr1, usr2,
          dev3, dev4, dev5, dev6, dev7, dev8] = await Promise.all([
     prisma.user.upsert({
-      where: { employeeId: 'ADMIN001' }, update: {},
-      create: { employeeId: 'ADMIN001', name: '시스템관리자', email: 'admin@company.com', passwordHash: await hash('Admin1234!'), role: 'ADMIN', departmentId: itDept.id },
+      where: { employeeId: 'ADMIN001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'ADMIN001', name: '시스템관리자', email: 'admin@company.com', passwordHash: await hash('1234'), role: 'ADMIN', departmentId: itDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'MGR001' }, update: {},
-      create: { employeeId: 'MGR001', name: 'IT책임자', email: 'manager@company.com', passwordHash: await hash('Manager1234!'), role: 'MANAGER', departmentId: itDept.id },
+      where: { employeeId: 'MGR001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'MGR001', name: 'IT책임자', email: 'manager@company.com', passwordHash: await hash('1234'), role: 'MANAGER', departmentId: itDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'APR001' }, update: {},
-      create: { employeeId: 'APR001', name: 'IT팀장', email: 'approver@company.com', passwordHash: await hash('Approver1234!'), role: 'APPROVER', departmentId: itDept.id },
+      where: { employeeId: 'APR001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'APR001', name: 'IT팀장', email: 'approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: itDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'APR002' }, update: {},
-      create: { employeeId: 'APR002', name: 'DB팀장', email: 'db.approver@company.com', passwordHash: await hash('Approver1234!'), role: 'APPROVER', departmentId: dbDept.id },
+      where: { employeeId: 'APR002' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'APR002', name: 'DB팀장', email: 'db.approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: dbDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV001' }, update: {},
-      create: { employeeId: 'DEV001', name: '김개발', email: 'dev1@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'DEV001', name: '김개발', email: 'dev1@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV002' }, update: {},
-      create: { employeeId: 'DEV002', name: '이개발', email: 'dev2@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV002' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'DEV002', name: '이개발', email: 'dev2@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'USR001' }, update: {},
-      create: { employeeId: 'USR001', name: '박사원', email: 'user1@company.com', passwordHash: await hash('User1234!'), role: 'USER', departmentId: hrDept.id },
+      where: { employeeId: 'USR001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'USR001', name: '박사원', email: 'user1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'USR002' }, update: {},
-      create: { employeeId: 'USR002', name: '최직원', email: 'user2@company.com', passwordHash: await hash('User1234!'), role: 'USER', departmentId: hrDept.id },
+      where: { employeeId: 'USR002' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'USR002', name: '최직원', email: 'user2@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id },
+    }),
+    prisma.user.upsert({
+      where: { employeeId: 'AUTO001' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'AUTO001', name: '오토사원', email: 'auto1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: autoDept.id },
+    }),
+    prisma.user.upsert({
+      where: { employeeId: 'AUTO002' },
+      update: { passwordHash: await hash('1234') },
+      create: { employeeId: 'AUTO002', name: '오토팀장', email: 'auto2@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: autoDept.id },
     }),
     // IT BA 추가 (도메인별 담당자)
     prisma.user.upsert({
@@ -230,12 +249,12 @@ async function main() {
 
   console.log('✅ 시드 데이터 생성 완료!');
   console.log('');
-  console.log('테스트 계정:');
-  console.log('  관리자:  ADMIN001 / Admin1234!');
-  console.log('  책임자:  MGR001   / Manager1234!');
-  console.log('  결재자:  APR001   / Approver1234!');
-  console.log('  개발자:  DEV001   / Dev1234!');
-  console.log('  사용자:  USR001   / User1234!');
+  console.log('테스트 계정 (임시 개발용 비밀번호: 1234):');
+  console.log('  관리자:    ADMIN001 (시스템관리자)');
+  console.log('  책임자:    MGR001   (IT책임자)');
+  console.log('  결재자:    APR001   (IT팀장), APR002 (DB팀장), AUTO002 (오토팀장)');
+  console.log('  개발자:    DEV001   (김개발), DEV002 (이개발)');
+  console.log('  사용자:    USR001   (박사원), USR002 (최직원), AUTO001 (오토사원)');
 }
 
 main()
