@@ -112,4 +112,25 @@ const updateRequirementStatus = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getRequirements, createRequirement, updateRequirement, updateRequirementStatus };
+const VALID_REVIEW_STATUSES = ['PENDING', 'REVIEWING', 'ACCEPTED', 'NEGOTIATING', 'DEFERRED', 'REJECTED'];
+
+const updateReviewStatus = async (req, res, next) => {
+  try {
+    const { reviewStatus, reviewNote } = req.body;
+    if (!VALID_REVIEW_STATUSES.includes(reviewStatus)) {
+      return res.status(400).json({ error: '유효하지 않은 검토 상태입니다.' });
+    }
+    const current = await prisma.requirement.findUnique({ where: { id: req.params.id } });
+    if (!current) return res.status(404).json({ error: '요구사항을 찾을 수 없습니다.' });
+
+    const updated = await prisma.requirement.update({
+      where: { id: req.params.id },
+      data: { reviewStatus, reviewNote: reviewNote?.trim() || null },
+      include: { createdBy: { select: { id: true, name: true } } },
+    });
+    audit.log({ ...audit.fromReq(req), action: 'UPDATE_REQUIREMENT', entityType: 'REQUIREMENT', entityId: current.id, entityLabel: current.title, oldValues: { reviewStatus: current.reviewStatus }, newValues: { reviewStatus, reviewNote } });
+    res.json(updated);
+  } catch (err) { next(err); }
+};
+
+module.exports = { getRequirements, createRequirement, updateRequirement, updateRequirementStatus, updateReviewStatus };

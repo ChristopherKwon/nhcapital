@@ -3,7 +3,7 @@ const router = require('express').Router();
 const { authenticate } = require('../middlewares/auth');
 const { getTickets, getTicketById, createTicket, processStage, addComment } = require('../controllers/ticketController');
 const { requestConsensus, processConsensus, getMyConsensusRequests } = require('../controllers/consensusController');
-const { getRequirements, createRequirement, updateRequirement, updateRequirementStatus } = require('../controllers/requirementController');
+const { getRequirements, createRequirement, updateRequirement, updateRequirementStatus, updateReviewStatus } = require('../controllers/requirementController');
 const { getDeployment, createDeployment, toggleChecklistItem, setReady, recordResult } = require('../controllers/deploymentController');
 const multer = require('multer');
 const path = require('path');
@@ -188,6 +188,7 @@ router.get('/:ticketId/requirements', getRequirements);
 router.post('/:ticketId/requirements', createRequirement);
 router.put('/requirements/:id', updateRequirement);
 router.patch('/requirements/:id/status', updateRequirementStatus);
+router.patch('/requirements/:id/review-status', updateReviewStatus);
 
 // 운영 이관
 router.get('/:ticketId/deployment', getDeployment);

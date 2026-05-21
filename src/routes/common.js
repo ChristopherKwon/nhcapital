@@ -169,6 +169,19 @@ router.post('/ai/estimate-difficulty', async (req, res, next) => {
   }
 });
 
+// 도메인별 IT BA 자동 배정 조회
+router.get('/domain-itba-mapping', async (req, res, next) => {
+  try {
+    const { domain } = req.query;
+    if (!domain) return res.json(null);
+    const mapping = await prisma.domainItbaMapping.findUnique({
+      where: { domain },
+      include: { itba: { select: { id: true, name: true, role: true, department: { select: { name: true } } } } },
+    });
+    res.json(mapping ? mapping.itba : null);
+  } catch (err) { next(err); }
+});
+
 // 업무 도메인 목록
 router.get('/business-domains', (req, res) => {
   res.json([

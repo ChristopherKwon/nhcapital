@@ -20,6 +20,38 @@ router.post('/departments', authorize('ADMIN'), createDepartment);
 router.get('/ticket-types', getTicketTypes);
 router.post('/ticket-types', authorize('ADMIN'), createTicketType);
 
+// 도메인-IT BA 매핑 관리 (ADMIN 전용)
+router.get('/domain-itba-mappings', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const mappings = await prisma.domainItbaMapping.findMany({
+      include: { itba: { select: { id: true, name: true, role: true, department: { select: { name: true } } } } },
+      orderBy: { domain: 'asc' },
+    });
+    res.json(mappings);
+  } catch (err) { next(err); }
+});
+
+router.post('/domain-itba-mappings', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { domain, itbaId } = req.body;
+    if (!domain || !itbaId) return res.status(400).json({ error: '도메인과 IT BA는 필수입니다.' });
+    const mapping = await prisma.domainItbaMapping.upsert({
+      where: { domain },
+      update: { itbaId },
+      create: { domain, itbaId },
+      include: { itba: { select: { id: true, name: true, role: true, department: { select: { name: true } } } } },
+    });
+    res.json(mapping);
+  } catch (err) { next(err); }
+});
+
+router.delete('/domain-itba-mappings/:id', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    await prisma.domainItbaMapping.delete({ where: { id: req.params.id } });
+    res.json({ message: '삭제되었습니다.' });
+  } catch (err) { next(err); }
+});
+
 // 운영 이관 현황
 router.get('/deployments', getAllDeployments);
 
