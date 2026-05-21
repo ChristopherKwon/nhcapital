@@ -19,6 +19,11 @@
 - [Node.js](https://nodejs.org) v18 이상
 - [PostgreSQL](https://www.postgresql.org/download) v14 이상
 
+> **git hook 설정 (최초 1회)** — Push 전 마이그레이션 누락을 자동으로 경고합니다.
+> ```bash
+> git config core.hooksPath .githooks
+> ```
+
 ### 1. 프로젝트 받기
 
 ```bash
