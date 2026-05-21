@@ -12,11 +12,48 @@
 
 ---
 
+## 개발 환경
+
+### 운영체제
+- Windows 10/11, macOS 13+, Ubuntu 22.04+ 모두 지원
+- 아래 명령어는 Windows(PowerShell/CMD)와 Mac/Linux 모두 동일하게 사용 가능합니다.  
+  단, 일부 명령어(DB 생성 등)는 OS별 차이가 있으며 해당 부분에 별도 안내가 있습니다.
+
+### 권장 IDE
+- [VS Code](https://code.visualstudio.com/) 권장
+- 추천 확장: Prisma, ESLint, Prettier, Thunder Client
+
+### Runtime / 플랫폼 버전
+
+| 항목 | 최소 버전 | 개발 환경 버전 |
+|------|-----------|----------------|
+| Node.js | v18.x | v24.15.0 |
+| npm | v8.x | v11.x |
+| PostgreSQL | v14.x | v16.13 |
+
+### 주요 패키지 버전
+
+| 패키지 | 버전 |
+|--------|------|
+| express | ^4.19.2 |
+| prisma | ^5.14.0 |
+| @prisma/client | ^5.14.0 |
+| @anthropic-ai/sdk | ^0.95.2 |
+| socket.io | ^4.7.5 |
+| bcryptjs | ^2.4.3 |
+| jsonwebtoken | ^9.0.2 |
+| multer | ^1.4.5-lts.1 |
+| pgvector | ^0.2.1 |
+| dotenv | ^16.4.5 |
+| nodemon (dev) | ^3.1.4 |
+
+---
+
 ## 시작하기
 
 ### 사전 준비
 
-- [Node.js](https://nodejs.org) v18 이상
+- [Node.js](https://nodejs.org) v18 이상 ([다운로드](https://nodejs.org/en/download))
 - [PostgreSQL](https://www.postgresql.org/download) v14 이상
 
 > **git hook 설정 (최초 1회)** — Push 전 마이그레이션 누락을 자동으로 경고합니다.
