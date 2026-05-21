@@ -5,6 +5,7 @@
 
 # 의존성 패키지 (npm install로 복원 가능)
 node_modules/
+.local/
 
 # 업로드된 파일 (증거 파일 등)
 uploads/

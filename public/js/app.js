@@ -243,6 +243,7 @@ function navigate(page, params = {}) {
     'dashboard': renderDashboard,
     'tickets': renderTicketList,
     'create-ticket': renderCreateTicket,
+    'ticket-templates': renderTicketTemplates,
     'ticket-detail': renderTicketDetail,
     'admin-dashboard': renderAdminDashboard,
     'admin-users': renderAdminUsers,
@@ -255,7 +256,7 @@ function navigate(page, params = {}) {
   };
 
   const titles = {
-    'dashboard': '대시보드', 'tickets': '티켓 목록', 'create-ticket': '티켓 등록',
+    'dashboard': '대시보드', 'tickets': '티켓 목록', 'create-ticket': '티켓 등록', 'ticket-templates': '티켓 템플릿',
     'ticket-detail': '티켓 상세', 'admin-dashboard': '현황 대시보드', 'admin-users': '사용자 관리',
     'admin-defects': '결함 관리',
     'admin-deployments': '이관 현황',
@@ -364,6 +365,132 @@ function ticketTable(tickets) {
       `).join('')}
     </tbody>
   </table></div>`;
+}
+
+function renderTemplateCharacter() {
+  return `
+    <div class="template-character" aria-hidden="true">
+      <svg viewBox="0 0 260 260" class="w-full h-full">
+        <defs>
+          <linearGradient id="tplBody" x1="58" y1="41" x2="194" y2="226" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#22c55e"/>
+            <stop offset="1" stop-color="#0f766e"/>
+          </linearGradient>
+          <linearGradient id="tplScreen" x1="73" y1="52" x2="191" y2="155" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#ecfeff"/>
+            <stop offset="1" stop-color="#dcfce7"/>
+          </linearGradient>
+          <filter id="tplShadow" x="20" y="28" width="220" height="214" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#064e3b" flood-opacity="0.24"/>
+          </filter>
+        </defs>
+        <path d="M51 210c19 19 139 20 160-1 9-9-8-21-34-26-37-8-88-7-121 2-25 7-34 14-5 25z" fill="#0f172a" opacity=".08"/>
+        <g filter="url(#tplShadow)">
+          <rect x="59" y="48" width="139" height="151" rx="34" fill="url(#tplBody)"/>
+          <rect x="75" y="67" width="107" height="76" rx="20" fill="url(#tplScreen)"/>
+          <circle cx="105" cy="102" r="8" fill="#14532d"/>
+          <circle cx="151" cy="102" r="8" fill="#14532d"/>
+          <path d="M111 122c12 9 25 9 37 0" fill="none" stroke="#14532d" stroke-width="6" stroke-linecap="round"/>
+          <rect x="96" y="157" width="65" height="12" rx="6" fill="#bbf7d0" opacity=".95"/>
+          <rect x="107" y="177" width="43" height="8" rx="4" fill="#86efac" opacity=".9"/>
+        </g>
+        <path d="M57 91c-24 5-35 19-32 42 2 14 10 26 23 33" fill="none" stroke="#0f766e" stroke-width="12" stroke-linecap="round"/>
+        <path d="M202 91c24 5 35 19 32 42-2 14-10 26-23 33" fill="none" stroke="#0f766e" stroke-width="12" stroke-linecap="round"/>
+        <g class="template-float">
+          <rect x="29" y="41" width="50" height="36" rx="12" fill="#fff" stroke="#bbf7d0"/>
+          <path d="M43 54h21M43 64h14" stroke="#16a34a" stroke-width="4" stroke-linecap="round"/>
+        </g>
+        <g class="template-float template-float-delay">
+          <rect x="181" y="29" width="52" height="42" rx="14" fill="#fff" stroke="#bae6fd"/>
+          <path d="M197 50l8 8 15-18" fill="none" stroke="#0284c7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </g>
+      </svg>
+    </div>`;
+}
+
+function renderTicketTemplates() {
+  const el = $('#page-content');
+  const templates = [
+    {
+      code: 'DEV',
+      title: '통합전산 개발요청',
+      tone: 'green',
+      desc: '신규 화면, 배치, 인터페이스 개발처럼 요구사항 정리가 중요한 요청에 적합합니다.',
+      fields: ['업무 도메인', '대상 시스템', '요청 배경', '기대 효과', 'IT BA'],
+      sample: '[배경/목적]\\n현재 수기 처리 중인 업무를 시스템화하고 싶습니다.\\n\\n[기대 효과]\\n처리 시간 단축 및 오류 감소'
+    },
+    {
+      code: 'DATA',
+      title: '자료 요청',
+      tone: 'blue',
+      desc: '조회, 추출, 현황 확인 등 데이터 제공 요청을 빠르게 작성하는 템플릿입니다.',
+      fields: ['자료 기준일', '추출 조건', '제공 형식', '활용 목적'],
+      sample: '[요청 자료]\\n월별 계약 현황\\n\\n[추출 조건]\\n기준일, 상품군, 부서별 구분 포함'
+    },
+    {
+      code: 'DATAMOD',
+      title: '자료 수정',
+      tone: 'amber',
+      desc: '원장 또는 기준 데이터 변경처럼 승인과 근거가 중요한 요청을 정돈합니다.',
+      fields: ['수정 대상', '변경 전후 값', '근거 문서', 'DB팀 합의'],
+      sample: '[수정 대상]\\n계약번호 또는 고객번호\\n\\n[변경 전/후]\\n변경 전: ...\\n변경 후: ...'
+    },
+    {
+      code: 'CHG',
+      title: '변경관리',
+      tone: 'violet',
+      desc: '배포, 인프라, DB 작업처럼 계획과 결과 검토가 필요한 변경에 맞춘 템플릿입니다.',
+      fields: ['변경 범위', '작업 계획', '영향도', '롤백 계획'],
+      sample: '[변경 범위]\\n운영 서버 배포 및 환경 설정 변경\\n\\n[롤백 계획]\\n직전 버전 재배포'
+    },
+  ];
+
+  el.innerHTML = `
+    <div class="template-page">
+      <section class="template-hero">
+        <div class="template-hero-copy">
+          <div class="template-kicker">Smart Request Studio</div>
+          <h2>요청서의 첫 문장을 더 쉽게 시작하세요</h2>
+          <p>업무 유형별 템플릿으로 누락되는 항목을 줄이고, 승인자가 바로 이해할 수 있는 티켓을 만들 수 있습니다.</p>
+          <div class="template-hero-actions">
+            <button onclick="navigate('create-ticket')" class="nh-btn text-white text-sm font-semibold px-5 py-3 rounded-xl">대화형 등록 시작</button>
+            <button onclick="navigate('tickets')" class="template-secondary-btn">티켓 목록 보기</button>
+          </div>
+        </div>
+        <div class="template-hero-art">
+          ${renderTemplateCharacter()}
+          <div class="template-art-card template-art-card-a">
+            <span></span>
+            필수 항목 점검
+          </div>
+          <div class="template-art-card template-art-card-b">
+            <span></span>
+            승인 흐름 추천
+          </div>
+        </div>
+      </section>
+
+      <section class="template-grid">
+        ${templates.map(t => `
+          <article class="template-card template-card-${t.tone}">
+            <div class="template-card-top">
+              <div>
+                <div class="template-code">${t.code}</div>
+                <h3>${t.title}</h3>
+              </div>
+              <button onclick="navigate('create-ticket', { template: '${t.code}' })" class="template-icon-btn" title="${t.title} 사용">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M5 12h14m-7-7l7 7-7 7"/></svg>
+              </button>
+            </div>
+            <p>${t.desc}</p>
+            <div class="template-fields">
+              ${t.fields.map(f => `<span>${f}</span>`).join('')}
+            </div>
+            <pre>${t.sample}</pre>
+          </article>
+        `).join('')}
+      </section>
+    </div>`;
 }
 
 // ── 대화형 티켓 등록 ─────────────────────────────────────────
