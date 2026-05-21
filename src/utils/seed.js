@@ -21,82 +21,73 @@ async function main() {
 
   // 사용자 생성
   const hash = (pw) => bcrypt.hash(pw, 12);
+  const rnd = () => String(Math.floor(Math.random() * 10));
   const [admin, mgr, apr1, apr2, dev1, dev2, usr1, usr2,
          dev3, dev4, dev5, dev6, dev7, dev8] = await Promise.all([
     prisma.user.upsert({
-      where: { employeeId: 'ADMIN001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'ADMIN001', name: '시스템관리자', email: 'admin@company.com', passwordHash: await hash('1234'), role: 'ADMIN', departmentId: itDept.id },
+      where: { employeeId: 'ADMIN001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'ADMIN001', name: '시스템관리자', email: 'admin@company.com', passwordHash: await hash('1234'), role: 'ADMIN', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'MGR001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'MGR001', name: 'IT책임자', email: 'manager@company.com', passwordHash: await hash('1234'), role: 'MANAGER', departmentId: itDept.id },
+      where: { employeeId: 'MGR001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'MGR001', name: 'IT책임자', email: 'manager@company.com', passwordHash: await hash('1234'), role: 'MANAGER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'APR001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'APR001', name: 'IT팀장', email: 'approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: itDept.id },
+      where: { employeeId: 'APR001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'APR001', name: 'IT팀장', email: 'approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'APR002' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'APR002', name: 'DB팀장', email: 'db.approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: dbDept.id },
+      where: { employeeId: 'APR002' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'APR002', name: 'DB팀장', email: 'db.approver@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: dbDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'DEV001', name: '김개발', email: 'dev1@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'DEV001', name: '김개발', email: 'dev1@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV002' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'DEV002', name: '이개발', email: 'dev2@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV002' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'DEV002', name: '이개발', email: 'dev2@company.com', passwordHash: await hash('1234'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'USR001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'USR001', name: '박사원', email: 'user1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id },
+      where: { employeeId: 'USR001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'USR001', name: '박사원', email: 'user1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'USR002' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'USR002', name: '최직원', email: 'user2@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id },
+      where: { employeeId: 'USR002' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'USR002', name: '최직원', email: 'user2@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: hrDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'AUTO001' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'AUTO001', name: '오토사원', email: 'auto1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: autoDept.id },
+      where: { employeeId: 'AUTO001' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'AUTO001', name: '오토사원', email: 'auto1@company.com', passwordHash: await hash('1234'), role: 'USER', departmentId: autoDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'AUTO002' },
-      update: { passwordHash: await hash('1234') },
-      create: { employeeId: 'AUTO002', name: '오토팀장', email: 'auto2@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: autoDept.id },
+      where: { employeeId: 'AUTO002' }, update: { passwordHash: await hash('1234'), memo: rnd() },
+      create: { employeeId: 'AUTO002', name: '오토팀장', email: 'auto2@company.com', passwordHash: await hash('1234'), role: 'APPROVER', departmentId: autoDept.id, memo: rnd() },
     }),
     // IT BA 추가 (도메인별 담당자)
     prisma.user.upsert({
-      where: { employeeId: 'DEV003' }, update: {},
-      create: { employeeId: 'DEV003', name: '정금융', email: 'dev3@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV003' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV003', name: '정금융', email: 'dev3@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV004' }, update: {},
-      create: { employeeId: 'DEV004', name: '한오토', email: 'dev4@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV004' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV004', name: '한오토', email: 'dev4@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV005' }, update: {},
-      create: { employeeId: 'DEV005', name: '오거래', email: 'dev5@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV005' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV005', name: '오거래', email: 'dev5@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV006' }, update: {},
-      create: { employeeId: 'DEV006', name: '권데이터', email: 'dev6@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV006' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV006', name: '권데이터', email: 'dev6@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV007' }, update: {},
-      create: { employeeId: 'DEV007', name: '임채널', email: 'dev7@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV007' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV007', name: '임채널', email: 'dev7@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
     prisma.user.upsert({
-      where: { employeeId: 'DEV008' }, update: {},
-      create: { employeeId: 'DEV008', name: '강경영', email: 'dev8@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id },
+      where: { employeeId: 'DEV008' }, update: { memo: rnd() },
+      create: { employeeId: 'DEV008', name: '강경영', email: 'dev8@company.com', passwordHash: await hash('Dev1234!'), role: 'DEVELOPER', departmentId: itDept.id, memo: rnd() },
     }),
   ]);
 
