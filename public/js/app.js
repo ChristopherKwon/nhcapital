@@ -232,6 +232,7 @@ function navigate(page, params = {}) {
     'admin-audit': renderAdminAudit,
     'admin-crud': renderAdminCrud,
     'admin-domain-mapping': renderAdminDomainMapping,
+    'admin-workflow': renderAdminWorkflow,
   };
 
   const titles = {
@@ -242,6 +243,7 @@ function navigate(page, params = {}) {
     'admin-audit': '감사 로그',
     'admin-crud': '전체 데이터 관리',
     'admin-domain-mapping': '도메인-IT BA 매핑 관리',
+    'admin-workflow': '워크플로우 관리',
   };
 
   $('#page-title').textContent = titles[page] || '';
@@ -5032,6 +5034,268 @@ const CRUD_MODELS = {
     displayFields: ['ticket.ticketNumber', 'title', 'severity', 'status', 'reporter.name']
   }
 };
+
+// ── 워크플로우 관리 ──────────────────────────────────────────────────
+const ACTION_TYPE_LABELS = {
+  SUBMIT: '요청 제출', APPROVE: '승인', WORK: '작업', CONFIRM: '확인',
+  CONSENSUS: '합의', COLLABORATE: '협업', PARALLEL_APPROVE: '병렬 승인', COMBINED_WORK: '개발+테스트',
+};
+const ROLE_LABELS = { USER: '사용자', APPROVER: '결재자', DEVELOPER: '개발자', MANAGER: '책임자', ADMIN: '관리자' };
+const ACTION_COLORS = {
+  SUBMIT: 'bg-blue-50 text-blue-700', APPROVE: 'bg-amber-50 text-amber-700',
+  WORK: 'bg-green-50 text-green-700', CONFIRM: 'bg-purple-50 text-purple-700',
+  CONSENSUS: 'bg-orange-50 text-orange-700', COLLABORATE: 'bg-teal-50 text-teal-700',
+  PARALLEL_APPROVE: 'bg-rose-50 text-rose-700', COMBINED_WORK: 'bg-indigo-50 text-indigo-700',
+};
+
+let wfSelectedTypeId = null;
+let wfDepts = [];
+
+async function renderAdminWorkflow() {
+  const el = $('#page-content');
+  el.innerHTML = `
+    <div class="flex gap-6 h-full">
+      <!-- 왼쪽: 티켓 유형 목록 -->
+      <aside class="w-64 shrink-0 bg-white rounded-xl border border-gray-200 shadow-sm self-start">
+        <div class="px-4 py-3 border-b border-gray-100">
+          <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">티켓 유형</div>
+        </div>
+        <div id="wf-type-list" class="p-2 space-y-0.5">
+          <div class="p-4 text-sm text-gray-400 text-center">불러오는 중...</div>
+        </div>
+      </aside>
+
+      <!-- 오른쪽: 단계 목록 -->
+      <section class="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div id="wf-stage-panel" class="p-8 text-center text-gray-400 text-sm">
+          왼쪽에서 티켓 유형을 선택하세요.
+        </div>
+      </section>
+    </div>
+
+    <!-- 단계 추가/수정 모달 -->
+    <div id="wf-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 id="wf-modal-title" class="text-base font-bold text-gray-800">단계 추가</h3>
+          <button onclick="closeWfModal()" class="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">단계명 <span class="text-red-500">*</span></label>
+            <input id="wf-name" type="text" placeholder="예) 요청 접수" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"/>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">액션 타입 <span class="text-red-500">*</span></label>
+              <select id="wf-action-type" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500">
+                ${Object.entries(ACTION_TYPE_LABELS).map(([v, l]) => `<option value="${v}">${l} (${v})</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">처리 역할 <span class="text-red-500">*</span></label>
+              <select id="wf-role" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500">
+                ${Object.entries(ROLE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">SLA 목표 시간 <span class="text-gray-400 font-normal">(시간, 선택)</span></label>
+            <input id="wf-sla" type="number" min="0" placeholder="예) 24" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500"/>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">처리 부서 <span class="text-gray-400 font-normal">(선택)</span></label>
+            <select id="wf-handler-dept" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500">
+              <option value="">없음</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="wf-requester-stage" type="checkbox" class="w-4 h-4 rounded text-green-600"/>
+            <label for="wf-requester-stage" class="text-sm text-gray-700">요청자 단계 <span class="text-gray-400 text-xs">(요청자가 직접 처리하는 단계)</span></label>
+          </div>
+        </div>
+        <div class="flex gap-2 p-6 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+          <button onclick="submitWfStage()" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2.5 rounded-lg font-medium transition-colors">저장</button>
+          <button onclick="closeWfModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm py-2.5 rounded-lg transition-colors">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  try { wfDepts = await api('/admin/departments'); } catch { wfDepts = []; }
+  const deptSel = $('#wf-handler-dept');
+  if (deptSel) wfDepts.forEach(d => { deptSel.innerHTML += `<option value="${d.id}">${d.name}</option>`; });
+
+  await loadWfTypes();
+}
+
+async function loadWfTypes() {
+  const list = $('#wf-type-list');
+  try {
+    const types = await api('/admin/workflow/ticket-types');
+    list.innerHTML = types.map(t => `
+      <button onclick="selectWfType('${t.id}','${t.name}')"
+        id="wf-type-btn-${t.id}"
+        class="w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all font-medium ${wfSelectedTypeId === t.id ? 'bg-green-50 text-green-700 border-l-4 border-green-500' : 'text-gray-600 hover:bg-gray-50'}">
+        <div class="flex items-center justify-between">
+          <span>${t.name}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded ${wfSelectedTypeId === t.id ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}">${t._count.workflowStages}</span>
+        </div>
+        <div class="text-xs mt-0.5 ${wfSelectedTypeId === t.id ? 'text-green-600' : 'text-gray-400'}">${t.code}</div>
+      </button>
+    `).join('');
+    if (wfSelectedTypeId) await loadWfStages(wfSelectedTypeId);
+  } catch {
+    list.innerHTML = '<div class="p-4 text-sm text-red-400 text-center">불러오기 실패</div>';
+  }
+}
+
+async function selectWfType(typeId, typeName) {
+  wfSelectedTypeId = typeId;
+  await loadWfTypes();
+}
+
+async function loadWfStages(typeId) {
+  const panel = $('#wf-stage-panel');
+  panel.innerHTML = '<div class="p-6 text-sm text-gray-400 text-center">불러오는 중...</div>';
+  try {
+    const stages = await api(`/admin/workflow/${typeId}/stages`);
+    const typeName = document.querySelector(`#wf-type-btn-${typeId}`)?.querySelector('span')?.textContent || '';
+    panel.innerHTML = `
+      <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div>
+          <h3 class="font-bold text-gray-800">${typeName} <span class="text-gray-400 font-normal text-sm">워크플로우</span></h3>
+          <p class="text-xs text-gray-400 mt-0.5">총 ${stages.length}단계 · ↑↓ 버튼으로 순서 변경, 단계 추가/수정/삭제 가능</p>
+        </div>
+        <button onclick="openWfModal()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          단계 추가
+        </button>
+      </div>
+      <div class="divide-y divide-gray-50" id="wf-stage-list">
+        ${stages.length === 0 ? '<div class="p-10 text-center text-gray-400 text-sm">등록된 단계가 없습니다.</div>' :
+          stages.map((s, i) => `
+          <div class="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors group" id="wf-stage-row-${s.id}">
+            <!-- 순서 번호 -->
+            <div class="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-xs font-bold flex items-center justify-center shrink-0">${s.stageOrder}</div>
+            <!-- 순서 버튼 -->
+            <div class="flex flex-col gap-0.5 shrink-0">
+              <button onclick="moveWfStage('${s.id}','up')" ${i === 0 ? 'disabled' : ''} class="w-5 h-5 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-xs">▲</button>
+              <button onclick="moveWfStage('${s.id}','down')" ${i === stages.length - 1 ? 'disabled' : ''} class="w-5 h-5 rounded text-gray-300 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-20 disabled:cursor-not-allowed flex items-center justify-center transition-colors text-xs">▼</button>
+            </div>
+            <!-- 단계 정보 -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-medium text-gray-800 text-sm">${s.name}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium ${ACTION_COLORS[s.actionType] || 'bg-gray-50 text-gray-600'}">${ACTION_TYPE_LABELS[s.actionType] || s.actionType}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-600">${ROLE_LABELS[s.requiredRole] || s.requiredRole}</span>
+                ${s.slaTargetHours ? `<span class="text-xs text-gray-400">⏱ ${s.slaTargetHours}h</span>` : ''}
+                ${s.handlerDept ? `<span class="text-xs text-gray-400">🏢 ${s.handlerDept.name}</span>` : ''}
+                ${s.isRequesterStage ? `<span class="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">요청자 단계</span>` : ''}
+              </div>
+            </div>
+            <!-- 관리 버튼 -->
+            <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button onclick="openWfModal('${s.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50 transition-colors">수정</button>
+              <button onclick="deleteWfStage('${s.id}','${s.name}')" class="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 rounded hover:bg-red-50 transition-colors">삭제</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    panel._stages = stages;
+  } catch {
+    panel.innerHTML = '<div class="p-8 text-center text-red-400 text-sm">단계 정보를 불러오지 못했습니다.</div>';
+  }
+}
+
+async function moveWfStage(id, dir) {
+  const panel = $('#wf-stage-panel');
+  const stages = panel._stages;
+  if (!stages) return;
+  const idx = stages.findIndex(s => s.id === id);
+  if (dir === 'up' && idx === 0) return;
+  if (dir === 'down' && idx === stages.length - 1) return;
+  const swap = dir === 'up' ? idx - 1 : idx + 1;
+  [stages[idx], stages[swap]] = [stages[swap], stages[idx]];
+  const orders = stages.map((s, i) => ({ id: s.id, stageOrder: i + 1 }));
+  try {
+    await api(`/admin/workflow/${wfSelectedTypeId}/stages/reorder`, { method: 'PATCH', body: JSON.stringify({ orders }) });
+    await loadWfStages(wfSelectedTypeId);
+  } catch { toast('순서 변경에 실패했습니다.', 'error'); }
+}
+
+async function openWfModal(stageId = null) {
+  const modal = $('#wf-modal');
+  const title = $('#wf-modal-title');
+  modal._editId = stageId;
+
+  // 부서 드롭다운 갱신
+  const deptSel = $('#wf-handler-dept');
+  deptSel.innerHTML = '<option value="">없음</option>' + wfDepts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+
+  if (stageId) {
+    title.textContent = '단계 수정';
+    const stage = $('#wf-stage-panel')._stages?.find(s => s.id === stageId);
+    if (stage) {
+      $('#wf-name').value = stage.name;
+      $('#wf-action-type').value = stage.actionType;
+      $('#wf-role').value = stage.requiredRole;
+      $('#wf-sla').value = stage.slaTargetHours || '';
+      $('#wf-handler-dept').value = stage.handlerDeptId || '';
+      $('#wf-requester-stage').checked = stage.isRequesterStage;
+    }
+  } else {
+    title.textContent = '단계 추가';
+    $('#wf-name').value = '';
+    $('#wf-action-type').value = 'WORK';
+    $('#wf-role').value = 'DEVELOPER';
+    $('#wf-sla').value = '';
+    $('#wf-handler-dept').value = '';
+    $('#wf-requester-stage').checked = false;
+  }
+  modal.classList.remove('hidden');
+  setTimeout(() => $('#wf-name').focus(), 50);
+}
+
+function closeWfModal() { $('#wf-modal')?.classList.add('hidden'); }
+
+async function submitWfStage() {
+  const name = $('#wf-name').value.trim();
+  const actionType = $('#wf-action-type').value;
+  const requiredRole = $('#wf-role').value;
+  const slaTargetHours = $('#wf-sla').value;
+  const handlerDeptId = $('#wf-handler-dept').value;
+  const isRequesterStage = $('#wf-requester-stage').checked;
+  const editId = $('#wf-modal')._editId;
+
+  if (!name) { toast('단계명을 입력해주세요.', 'error'); $('#wf-name').focus(); return; }
+
+  const body = JSON.stringify({ name, actionType, requiredRole, slaTargetHours: slaTargetHours || null, handlerDeptId, isRequesterStage });
+  try {
+    if (editId) {
+      await api(`/admin/workflow/stages/${editId}`, { method: 'PUT', body });
+      toast('수정되었습니다.', 'success');
+    } else {
+      await api(`/admin/workflow/${wfSelectedTypeId}/stages`, { method: 'POST', body });
+      toast('단계가 추가되었습니다.', 'success');
+    }
+    closeWfModal();
+    await loadWfStages(wfSelectedTypeId);
+    await loadWfTypes();
+  } catch (e) { toast(e.message || '저장에 실패했습니다.', 'error'); }
+}
+
+async function deleteWfStage(id, name) {
+  if (!confirm(`"${name}" 단계를 삭제하시겠습니까?\n이 단계를 참조하는 티켓이 있으면 삭제할 수 없습니다.`)) return;
+  try {
+    await api(`/admin/workflow/stages/${id}`, { method: 'DELETE' });
+    toast('삭제되었습니다.', 'success');
+    await loadWfStages(wfSelectedTypeId);
+    await loadWfTypes();
+  } catch (e) { toast(e.message || '삭제에 실패했습니다.', 'error'); }
+}
+// ────────────────────────────────────────────────────────────────────
 
 // ── 도메인-IT BA 매핑 관리 ──────────────────────────────────────────
 async function renderAdminDomainMapping() {
