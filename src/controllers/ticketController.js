@@ -200,14 +200,10 @@ const createTicket = async (req, res, next) => {
     }
 
     // 임베딩 비동기 저장 (응답을 블로킹하지 않음)
-    const searchText = aiService.buildTicketSearchText({ title, description, businessDomain, subCategory, targetSystem });
-    aiService.generateEmbedding(searchText).then(embedding => {
-      const vectorStr = `[${embedding.join(',')}]`;
-      return prisma.$executeRawUnsafe(
-        `UPDATE tickets SET embedding = $1::vector WHERE id = $2::text`,
-        vectorStr, ticket.id
-      );
-    }).catch(() => {});
+    if (aiService.VECTOR_SEARCH_ENABLED) {
+      const searchText = aiService.buildTicketSearchText({ title, description, businessDomain, subCategory, targetSystem });
+      aiService.generateEmbedding(searchText).then(() => null).catch(() => {});
+    }
 
     audit.log({ ...audit.fromReq(req), action: 'CREATE_TICKET', entityType: 'TICKET', entityId: ticket.id, entityLabel: ticket.ticketNumber, newValues: { title, ticketTypeId, priority } });
     res.status(201).json(ticket);

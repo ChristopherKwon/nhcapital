@@ -13,6 +13,8 @@
 5. `node src/utils/seed.js`
 6. `npm start`
 
+기본 접속 주소는 `http://localhost:3201` 입니다.
+
 ## 기본 환경 변수
 
 - `DATABASE_URL`: PostgreSQL 연결 문자열

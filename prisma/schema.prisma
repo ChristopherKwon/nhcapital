@@ -267,7 +267,6 @@ model Ticket {
   businessDomain String?
   itBaId         String?
   managerId      String?
-  embedding      Unsupported("vector(1536)")?
   aiEstimatedDifficulty String?
   aiEstimatedDays       String?
   aiDifficultyReason    String?

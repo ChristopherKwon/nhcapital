@@ -3,6 +3,16 @@ const API = '/api';
 let currentUser = null;
 let socket = null;
 let currentPage = null;
+const QUICK_LOGIN_CREDENTIALS = {
+  ADMIN001: 'Admin1234!',
+  MGR001: 'Manager1234!',
+  APR001: 'Approver1234!',
+  APR002: 'Approver1234!',
+  DEV001: 'Dev1234!',
+  DEV002: 'Dev1234!',
+  USR001: 'User1234!',
+  USR002: 'User1234!',
+};
 
 // ── 유틸리티 ──────────────────────────────────────────────
 const $ = (sel, ctx = document) => ctx.querySelector(sel);
@@ -102,8 +112,17 @@ $('#login-form').addEventListener('submit', async (e) => {
 async function quickLogin(employeeId) {
   const errEl = $('#login-error');
   errEl.classList.add('hidden');
+  const password = QUICK_LOGIN_CREDENTIALS[employeeId];
+  if (!password) {
+    errEl.textContent = '등록되지 않은 시현용 계정입니다.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  $('#login-employee-id').value = employeeId;
+  $('#login-password').value = password;
   try {
-    const data = await api('/auth/login', { method: 'POST', body: { employeeId, password: '1234' } });
+    const data = await api('/auth/login', { method: 'POST', body: { employeeId, password } });
     localStorage.setItem('token', data.token);
     localStorage.setItem('user', JSON.stringify(data.user));
     initApp(data.user);

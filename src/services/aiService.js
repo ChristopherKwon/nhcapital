@@ -4,6 +4,7 @@ const prisma = require('../utils/prisma');
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const EMBEDDING_DIM = 1536;
+const VECTOR_SEARCH_ENABLED = String(process.env.ENABLE_VECTOR_SEARCH || "false").toLowerCase() === "true";
 
 // Claude API로 텍스트 임베딩 생성 (text-embedding-3-small 호환 방식)
 // Anthropic은 자체 임베딩 API가 없으므로 voyage-3-lite 모델을 voyageai 또는
@@ -69,6 +70,60 @@ function buildTicketSearchText(data) {
 
 // 유사 티켓 검색 (pgvector 코사인 유사도)
 async function findSimilarTickets({ text, excludeTicketId = null, limit = 5 }) {
+  if (!VECTOR_SEARCH_ENABLED) {
+    const keywords = String(text || "")
+      .split(/\s+/)
+      .map((keyword) => keyword.trim())
+      .filter((keyword) => keyword.length >= 2)
+      .slice(0, 5);
+
+    if (keywords.length === 0) {
+      return [];
+    }
+
+    const conditions = keywords.map((keyword) => ({
+      OR: [
+        { title: { contains: keyword, mode: 'insensitive' } },
+        { description: { contains: keyword, mode: 'insensitive' } },
+        { businessDomain: { contains: keyword, mode: 'insensitive' } },
+        { subCategory: { contains: keyword, mode: 'insensitive' } },
+        { targetSystem: { contains: keyword, mode: 'insensitive' } },
+      ],
+    }));
+
+    return prisma.ticket.findMany({
+      where: {
+        AND: [
+          { status: { not: 'CANCELLED' } },
+          excludeTicketId ? { id: { not: excludeTicketId } } : {},
+          { OR: conditions },
+        ],
+      },
+      select: {
+        id: true,
+        ticketNumber: true,
+        title: true,
+        status: true,
+        businessDomain: true,
+        subCategory: true,
+        targetSystem: true,
+        finalDifficulty: true,
+        aiEstimatedDifficulty: true,
+        aiEstimatedDays: true,
+        createdAt: true,
+        requester: { select: { name: true } },
+        ticketType: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    }).then((rows) => rows.map((row) => ({
+      ...row,
+      requesterName: row.requester?.name || '',
+      ticketTypeName: row.ticketType?.name || '',
+      similarity: null,
+    })));
+  }
+
   const embedding = await generateEmbedding(text);
   const vectorStr = `[${embedding.join(',')}]`;
 
@@ -285,4 +340,4 @@ async function generateTestCases({ ticketTitle, requirement }) {
   }
 }
 
-module.exports = { generateEmbedding, buildTicketSearchText, findSimilarTickets, estimateDifficulty, recalculateDifficulty, generateTestCases };
+module.exports = { generateEmbedding, buildTicketSearchText, findSimilarTickets, estimateDifficulty, recalculateDifficulty, generateTestCases, VECTOR_SEARCH_ENABLED };

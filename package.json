@@ -8,6 +8,7 @@
     "dev": "nodemon src/index.js",
     "db:migrate": "prisma migrate dev",
     "db:seed": "node src/utils/seed.js",
+    "db:seed-demo": "node src/utils/seed-demo-data.js",
     "db:studio": "prisma studio"
   },
   "dependencies": {
