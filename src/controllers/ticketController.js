@@ -108,7 +108,7 @@ const getTicketById = async (req, res, next) => {
 
 const createTicket = async (req, res, next) => {
   try {
-    const { ticketTypeId, title, description, priority, dueDate,
+    const { ticketTypeId, title, description, dueDate,
             subCategory, targetSystem, businessDomain, itBaId, consensusApproverIds,
             aiEstimatedDifficulty, aiEstimatedDays, aiDifficultyReason } = req.body;
 
@@ -127,6 +127,17 @@ const createTicket = async (req, res, next) => {
     const firstStage = ticketType.workflowStages[0];
     const secondStage = ticketType.workflowStages[1];
     const ticketNumber = await generateTicketNumber();
+
+    // 희망 완료일 기준 우선순위 자동 계산
+    const calcPriority = (due) => {
+      if (!due) return 'MEDIUM';
+      const days = Math.ceil((new Date(due) - new Date()) / 86400000);
+      if (days <= 7)  return 'CRITICAL';
+      if (days <= 14) return 'HIGH';
+      if (days <= 30) return 'MEDIUM';
+      return 'LOW';
+    };
+    const priority = calcPriority(dueDate);
 
     const ticket = await prisma.$transaction(async (tx) => {
       const newTicket = await tx.ticket.create({
@@ -280,8 +291,8 @@ const processStage = async (req, res, next) => {
       }
     }
 
-    // 담당 부서 제한이 있는 단계: 지정 부서 소속만 처리 가능 (ADMIN 제외)
-    if (currentStage.handlerDeptId && userRole !== 'ADMIN') {
+    // 담당 부서 제한이 있는 단계: 지정 부서 소속만 처리 가능 (ADMIN, 요청자 단계 제외)
+    if (currentStage.handlerDeptId && userRole !== 'ADMIN' && !currentStage.isRequesterStage) {
       if (req.user.departmentId !== currentStage.handlerDeptId) {
         const deptName = currentStage.handlerDept?.name || '';
         return res.status(403).json({ error: `이 단계는 ${deptName} 소속만 처리할 수 있습니다.` });
@@ -306,6 +317,16 @@ const processStage = async (req, res, next) => {
       const colConsensus = await prisma.collaborationConsensus.findUnique({ where: { ticketId: id } });
       if (!colConsensus?.requesterAgreed || !colConsensus?.itBaAgreed) {
         return res.status(400).json({ error: '요청자와 IT BA 양측이 모두 합의해야 다음 단계로 진행할 수 있습니다.' });
+      }
+    }
+
+    // 요구사항 등록 단계: 완료 시 요구사항 1개 이상 필수
+    if (currentStage.name === '요구사항 등록' && action === 'COMPLETED') {
+      const reqCount = await prisma.requirement.count({
+        where: { ticketId: id, status: { not: 'CANCELLED' } },
+      });
+      if (reqCount === 0) {
+        return res.status(400).json({ error: '요구사항을 1개 이상 등록해야 제출할 수 있습니다.' });
       }
     }
 

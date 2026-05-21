@@ -226,6 +226,7 @@ function navigate(page, params = {}) {
     'admin-defects': renderAdminDefects,
     'admin-deployments': renderAdminDeployments,
     'admin-audit': renderAdminAudit,
+    'admin-domain-itba': renderAdminDomainItba,
   };
 
   const titles = {
@@ -234,6 +235,7 @@ function navigate(page, params = {}) {
     'admin-defects': '결함 관리',
     'admin-deployments': '이관 현황',
     'admin-audit': '감사 로그',
+    'admin-domain-itba': '도메인-IT BA 매핑',
   };
 
   $('#page-title').textContent = titles[page] || '';
@@ -354,10 +356,10 @@ function chatBuildSteps(typeCode) {
     { id:'subCategory', type:'chips', q:'변경 상세유형을 선택해주세요.', field:'subCategory', opts:CHAT_CHG_TYPES },
   ];
   const final = [
-    { id:'priority', type:'chips', q:'우선순위를 선택해주세요.', field:'priority', opts:CHAT_PRIORITIES.map(p=>p.l), defaultVal:'보통' },
     { id:'dueDate',  type:'date',  q:'완료 희망일이 있으신가요?', field:'dueDate', skippable:true, skipLabel:'없음' },
     { id:'itBa',     type:'user_search', q:'IT BA를 지정해주세요. (영향도 분석 담당자 필수 지정)', endpoint:'/common/users/it-ba', skippable:false },
     { id:'consensus', type:'consensus',  q:'합의가 필요한 분이 있나요? (선택사항)', skippable:true, skipLabel:'합의 불필요' },
+    { id:'requirements', type:'requirements', q:'요구사항을 입력해주세요.\n최소 1개 이상 등록해야 티켓을 제출할 수 있습니다.' },
     { id:'summary',  type:'summary', q:'아래 내용으로 티켓을 등록할게요. 확인해주세요.' },
   ];
   const extra = typeCode==='DEV' ? devExtra : typeCode==='CHG' ? chgExtra : [];
@@ -367,7 +369,7 @@ function chatBuildSteps(typeCode) {
 async function renderCreateTicket() {
   const el = $('#page-content');
   el.innerHTML = '<div class="text-gray-400 text-sm p-6">불러오는 중...</div>';
-  chatData = { ticketTypes: [], steps: [], currentStep: 0, answers: {}, itBa: null, consensusApprovers: [], linkedTickets: [], simTimer: null };
+  chatData = { ticketTypes: [], steps: [], currentStep: 0, answers: {}, itBa: null, consensusApprovers: [], linkedTickets: [], requirements: [], simTimer: null };
   try {
     chatData.ticketTypes = await api('/common/ticket-types');
   } catch (err) {
@@ -484,6 +486,190 @@ function chatBack() {
   setTimeout(() => chatShowInput(prevStep), 200);
 }
 
+let _chatReqEditIndex = -1;
+let _chatReqModalImages = [];
+let _chatReqModalFiles = [];
+
+function chatRenderReqList() {
+  const el = $('#chat-req-list');
+  if (!el) return;
+  if (!chatData.requirements.length) {
+    el.innerHTML = '<div class="text-xs text-gray-400 text-center py-2">요구사항을 1개 이상 추가해주세요.</div>';
+    return;
+  }
+  el.innerHTML = chatData.requirements.map((r, i) => `
+    <div class="border border-blue-100 rounded-xl p-3 bg-blue-50">
+      <div class="flex items-start gap-2">
+        <span class="w-5 h-5 bg-blue-600 text-white rounded-full text-xs flex items-center justify-center shrink-0 mt-0.5">${i + 1}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-gray-800">${r.title}</div>
+          ${r.description ? `<div class="text-xs text-gray-500 mt-0.5 truncate">${r.description}</div>` : ''}
+          ${r.images?.length ? `<div class="text-xs text-indigo-600 mt-0.5">🖼️ 이미지 ${r.images.length}장</div>` : ''}
+          ${r.files?.length ? `<div class="text-xs text-gray-500 mt-0.5">📎 파일 ${r.files.length}개</div>` : ''}
+        </div>
+        <div class="flex gap-1 shrink-0">
+          <button onclick="chatShowReqModal(${i})" class="text-xs text-blue-600 hover:bg-blue-100 px-2 py-1 rounded">수정</button>
+          <button onclick="chatRemoveRequirement(${i})" class="text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded">✕</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function chatRemoveRequirement(i) {
+  chatData.requirements.splice(i, 1);
+  chatRenderReqList();
+  const nextBtn = $('#chat-req-next');
+  if (nextBtn && chatData.requirements.length === 0) {
+    nextBtn.disabled = true;
+    nextBtn.className = 'w-full py-3 rounded-xl text-white text-sm font-semibold transition bg-gray-300 cursor-not-allowed';
+  }
+}
+
+function chatShowReqModal(editIdx = -1) {
+  _chatReqEditIndex = editIdx;
+  const existing = editIdx >= 0 ? chatData.requirements[editIdx] : null;
+  _chatReqModalImages = existing?.images ? [...existing.images] : [];
+  _chatReqModalFiles  = existing?.files  ? [...existing.files]  : [];
+
+  const modal = document.createElement('div');
+  modal.id = 'chat-req-modal';
+  modal.className = 'fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-4 overflow-y-auto';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl my-8">
+      <div class="flex items-center justify-between px-6 py-4 border-b">
+        <h3 class="text-lg font-bold text-gray-800">${existing ? '요구사항 수정' : '요구사항 추가'}</h3>
+        <button type="button" onclick="document.getElementById('chat-req-modal')?.remove()" class="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      </div>
+      <div class="px-6 py-5 space-y-4">
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">제목 <span class="text-red-500">*</span></label>
+          <input id="chat-modal-title" type="text" value="${existing ? existing.title.replace(/"/g, '&quot;') : ''}"
+            placeholder="요구사항 제목을 입력하세요"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">설명</label>
+          <textarea id="chat-modal-desc" rows="3" placeholder="요구사항 상세 설명 (선택)"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none">${existing?.description || ''}</textarea>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">이미지 첨부</label>
+          <p class="text-xs text-gray-400 mb-2">화면 모형·스크린샷에 도형/텍스트를 그려 여러 장 추가할 수 있습니다.</p>
+          <button type="button" onclick="chatAddModalImage()"
+            class="flex items-center gap-1.5 text-sm bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded-lg font-medium transition">
+            🖼️ 이미지 도구로 추가
+          </button>
+          <div id="chat-modal-images" class="mt-3 grid grid-cols-3 gap-2"></div>
+        </div>
+        <div>
+          <label class="text-sm font-medium text-gray-700 mb-1 block">파일 첨부 <span class="text-xs text-gray-400 font-normal">(최대 20개)</span></label>
+          <label class="flex items-center gap-2 cursor-pointer border-2 border-dashed border-gray-200 hover:border-blue-300 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-blue-600 transition">
+            📁 파일을 선택하거나 여기에 드래그하세요
+            <input type="file" id="chat-modal-file-input" multiple class="hidden" onchange="chatHandleModalFileInput(event)" />
+          </label>
+          <div id="chat-modal-file-list" class="mt-2 space-y-1"></div>
+        </div>
+      </div>
+      <div class="flex gap-3 justify-end px-6 py-4 border-t bg-gray-50 rounded-b-2xl">
+        <button type="button" onclick="document.getElementById('chat-req-modal')?.remove()"
+          class="px-5 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100">취소</button>
+        <button type="button" onclick="chatSubmitReqModal()"
+          class="px-6 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition">${existing ? '수정 저장' : '추가'}</button>
+      </div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+  chatRenderModalImages();
+  chatRenderModalFileList();
+  setTimeout(() => document.getElementById('chat-modal-title')?.focus(), 50);
+}
+
+function chatRenderModalImages() {
+  const el = document.getElementById('chat-modal-images');
+  if (!el) return;
+  el.innerHTML = _chatReqModalImages.map((img, i) => `
+    <div class="relative group rounded-lg overflow-hidden border border-gray-200">
+      <img src="${img.imageData}" class="w-full h-24 object-cover cursor-pointer" onclick="chatViewModalImage(${i})" />
+      <button type="button" onclick="chatRemoveModalImage(${i})"
+        class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs opacity-0 group-hover:opacity-100 transition flex items-center justify-center">✕</button>
+      <div class="absolute bottom-0 left-0 right-0 bg-black/40 text-white text-xs text-center py-0.5">${i + 1}번</div>
+    </div>`).join('');
+}
+
+function chatRenderModalFileList() {
+  const el = document.getElementById('chat-modal-file-list');
+  if (!el) return;
+  el.innerHTML = _chatReqModalFiles.map((f, i) => `
+    <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg text-xs">
+      <span class="flex-1 truncate text-gray-700">📎 ${f.name}</span>
+      <span class="text-gray-400 shrink-0">${formatFileSize(f.size)}</span>
+      <button type="button" onclick="chatRemoveModalFile(${i})" class="text-gray-400 hover:text-red-500 shrink-0">✕</button>
+    </div>`).join('');
+}
+
+function chatRemoveModalImage(i) {
+  _chatReqModalImages.splice(i, 1);
+  chatRenderModalImages();
+}
+
+function chatViewModalImage(i) {
+  const img = _chatReqModalImages[i];
+  if (!img) return;
+  const ov = document.createElement('div');
+  ov.className = 'fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4';
+  ov.innerHTML = `<div class="relative max-w-4xl w-full"><button onclick="this.closest('.fixed').remove()" class="absolute -top-8 right-0 text-white text-2xl">✕</button><img src="${img.imageData}" class="w-full rounded-xl shadow-2xl" /></div>`;
+  ov.addEventListener('click', e => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+
+function chatRemoveModalFile(i) {
+  _chatReqModalFiles.splice(i, 1);
+  chatRenderModalFileList();
+}
+
+function chatHandleModalFileInput(e) {
+  Array.from(e.target.files).forEach(f => {
+    if (!_chatReqModalFiles.find(x => x.name === f.name && x.size === f.size)) _chatReqModalFiles.push(f);
+  });
+  e.target.value = '';
+  chatRenderModalFileList();
+}
+
+function chatAddModalImage() {
+  window._qAnnotCallback = (imageData, shapes) => {
+    _chatReqModalImages.push({ imageData, shapes });
+    window._qAnnotCallback = null;
+    chatRenderModalImages();
+  };
+  openAnnotationModal(null, '요구사항 이미지');
+}
+
+function chatSubmitReqModal() {
+  const title = document.getElementById('chat-modal-title')?.value.trim();
+  const description = document.getElementById('chat-modal-desc')?.value.trim();
+  if (!title) { toast('요구사항 제목을 입력해주세요.', 'error'); return; }
+  const item = { title, description: description || null, images: [..._chatReqModalImages], files: [..._chatReqModalFiles] };
+  if (_chatReqEditIndex >= 0) {
+    chatData.requirements[_chatReqEditIndex] = item;
+  } else {
+    chatData.requirements.push(item);
+  }
+  document.getElementById('chat-req-modal')?.remove();
+  chatRenderReqList();
+  const nextBtn = $('#chat-req-next');
+  if (nextBtn && chatData.requirements.length > 0) {
+    nextBtn.disabled = false;
+    nextBtn.className = 'w-full py-3 rounded-xl text-white text-sm font-semibold transition nh-btn';
+  }
+}
+
+function chatSubmitRequirements() {
+  if (!chatData.requirements.length) { toast('요구사항을 1개 이상 입력해주세요.', 'error'); return; }
+  const titles = chatData.requirements.map(r => r.title).join(', ');
+  chatMsg('user', `요구사항 ${chatData.requirements.length}건 등록: ${titles}`);
+  chatAdvance();
+}
+
 function chatShowInput(step) {
   const inp = $('#chat-inp');
   if (!inp) return;
@@ -535,27 +721,56 @@ function chatShowInput(step) {
     setTimeout(() => inp.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
 
   } else if (step.type === 'user_search') {
+    const autoAssigned = chatData._itbaAutoAssigned && chatData.itBa;
     inp.innerHTML = `
       <div class="space-y-2">
-        <div id="chat-utags" class="flex flex-wrap gap-1.5 ${chatData.itBa?'':'hidden'}">
-          ${chatData.itBa ? `<span class="user-tag">${chatData.itBa.name} <button onclick="chatData.itBa=null;document.getElementById('chat-utags').classList.add('hidden');document.getElementById('chat-utags').innerHTML=''">&times;</button></span>` : ''}
-        </div>
-        <div class="flex gap-2 items-center">
-          <div class="relative flex-1">
-            <input id="chat-ui" type="text" placeholder="이름으로 검색..." class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
-            <div id="chat-udd" class="hidden search-dropdown"></div>
+        ${autoAssigned ? `
+        <div id="chat-auto-badge" class="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
+          <span class="text-xs font-semibold text-green-700">✓ 업무 도메인 기준 자동 배정</span>
+          <span class="font-medium text-sm text-green-800">${chatData.itBa.name}</span>
+          <span class="text-xs text-green-500">(${chatData.itBa.department?.name || ''})</span>
+          <button onclick="chatClearAutoItba()" class="ml-auto text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded px-2 py-0.5">변경</button>
+        </div>` : ''}
+        <div id="chat-manual-itba" class="${autoAssigned ? 'hidden' : ''}">
+          <div id="chat-utags" class="flex flex-wrap gap-1.5 ${chatData.itBa && !autoAssigned ? '' : 'hidden'}">
+            ${chatData.itBa && !autoAssigned ? `<span class="user-tag">${chatData.itBa.name} <button onclick="chatData.itBa=null;document.getElementById('chat-utags').classList.add('hidden');document.getElementById('chat-utags').innerHTML=''">&times;</button></span>` : ''}
           </div>
-          <button onclick="chatSubmitUser('${step.id}')" class="nh-btn px-5 py-3 rounded-xl text-white text-sm font-medium shrink-0">확인</button>
-          <button onclick="chatSkip('${step.id}','${step.skipLabel}')" class="px-4 py-3 border border-gray-300 rounded-xl text-sm text-gray-500 hover:bg-gray-50 shrink-0">${step.skipLabel}</button>
+          <div class="flex gap-2 items-center">
+            <div class="relative flex-1">
+              <input id="chat-ui" type="text" placeholder="이름으로 검색..." class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400" />
+              <div id="chat-udd" class="hidden search-dropdown"></div>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="chatSubmitUser('${step.id}')" class="nh-btn flex-1 py-3 rounded-xl text-white text-sm font-medium">확인</button>
+          ${step.skipLabel ? `<button onclick="chatSkip('${step.id}','${step.skipLabel}')" class="flex-1 py-3 border border-gray-300 rounded-xl text-sm text-gray-500 hover:bg-gray-50">${step.skipLabel}</button>` : ''}
         </div>
       </div>`;
     chatSetupUserDD('#chat-ui', '#chat-udd', step.endpoint, user => {
       chatData.itBa = user;
+      chatData._itbaAutoAssigned = false;
       const tags = $('#chat-utags');
       tags.classList.remove('hidden');
       tags.innerHTML = `<span class="user-tag">${user.name} <button onclick="chatData.itBa=null;this.parentElement.parentElement.innerHTML='';this.parentElement.parentElement.classList.add('hidden')">&times;</button></span>`;
       $('#chat-ui').value = '';
     });
+
+  } else if (step.type === 'requirements') {
+    inp.innerHTML = `
+      <div class="space-y-3">
+        <div id="chat-req-list" class="space-y-2"></div>
+        <button onclick="chatShowReqModal()"
+          class="w-full flex items-center justify-center gap-2 border-2 border-dashed border-blue-300 text-blue-600 hover:border-blue-500 hover:bg-blue-50 rounded-xl py-3 text-sm font-medium transition">
+          + 요구사항 추가
+        </button>
+        <button id="chat-req-next" onclick="chatSubmitRequirements()"
+          class="w-full py-3 rounded-xl text-white text-sm font-semibold transition ${chatData.requirements.length > 0 ? 'nh-btn' : 'bg-gray-300 cursor-not-allowed'}"
+          ${chatData.requirements.length === 0 ? 'disabled' : ''}>
+          다음 →
+        </button>
+      </div>`;
+    chatRenderReqList();
 
   } else if (step.type === 'consensus') {
     inp.innerHTML = `
@@ -645,10 +860,23 @@ function chatSubmitText(stepId) {
 
 function chatSelectChip(stepId, value) {
   const step = chatData.steps.find(s => s.id === stepId);
-  let actual = value;
-  if (stepId === 'priority') actual = CHAT_PRIORITIES.find(p => p.l === value)?.v || value;
+  const actual = value;
   chatData.answers[step.field] = actual;
   chatMsg('user', value);
+
+  // 업무 도메인 선택 시 IT BA 자동 조회
+  if (stepId === 'businessDomain') {
+    api(`/common/domain-itba-mapping?domain=${encodeURIComponent(value)}`)
+      .then(itba => {
+        if (itba) {
+          chatData.itBa = itba;
+          chatData._itbaAutoAssigned = true;
+        } else {
+          chatData._itbaAutoAssigned = false;
+        }
+      }).catch(() => {});
+  }
+
   chatAdvance();
 }
 
@@ -666,8 +894,22 @@ function chatSkip(stepId, label) {
   chatAdvance();
 }
 
+function chatClearAutoItba() {
+  chatData.itBa = null;
+  chatData._itbaAutoAssigned = false;
+  const badge = document.getElementById('chat-auto-badge');
+  const manual = document.getElementById('chat-manual-itba');
+  if (badge) badge.classList.add('hidden');
+  if (manual) manual.classList.remove('hidden');
+  document.getElementById('chat-ui')?.focus();
+}
+
 function chatSubmitUser(stepId) {
-  chatMsg('user', chatData.itBa ? `${chatData.itBa.name} (IT BA 지정)` : '지정 안 함');
+  if (chatData._itbaAutoAssigned && chatData.itBa) {
+    chatMsg('user', `${chatData.itBa.name} (자동 배정)`);
+  } else {
+    chatMsg('user', chatData.itBa ? `${chatData.itBa.name} (IT BA 지정)` : '지정 안 함');
+  }
   chatAdvance();
 }
 
@@ -810,7 +1052,6 @@ function chatLinkTicket(id, number, title) {
 
 function chatShowSummary() {
   const a = chatData.answers;
-  const priLabel = CHAT_PRIORITIES.find(p => p.v === a.priority)?.l || a.priority || '보통';
   const descParts = [
     a.why        ? `[요청 배경 및 기대 효과]\n${a.why}` : '',
     a.regulation && a.regulation !== '해당 없음' ? `\n[근거]\n${a.regulation}` : '',
@@ -821,7 +1062,6 @@ function chatShowSummary() {
       <div class="bg-gray-50 rounded-xl border border-gray-200 p-4 space-y-3 text-sm">
         <div class="grid grid-cols-2 gap-x-6 gap-y-2.5">
           <div><div class="text-xs text-gray-400 mb-0.5">유형</div><div class="font-semibold">${a._typeName}</div></div>
-          <div><div class="text-xs text-gray-400 mb-0.5">우선순위</div><div class="font-semibold">${priLabel}</div></div>
           ${a.businessDomain ? `<div><div class="text-xs text-gray-400 mb-0.5">업무 도메인</div><div class="font-semibold">${a.businessDomain}</div></div>` : ''}
           ${a.regulation && a.regulation !== '해당 없음' ? `<div><div class="text-xs text-gray-400 mb-0.5">근거</div><div class="font-semibold">${a.regulation}</div></div>` : ''}
           ${a.subCategory  ? `<div><div class="text-xs text-gray-400 mb-0.5">세부구분</div><div class="font-semibold">${a.subCategory}</div></div>` : ''}
@@ -837,6 +1077,13 @@ function chatShowSummary() {
           <div class="text-xs text-gray-400 mb-1">내용 (자동 구성)</div>
           <pre class="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed bg-white border border-gray-100 rounded-lg p-3">${descParts}</pre>
         </div>
+        ${chatData.requirements.length > 0 ? `
+        <div class="pt-2.5 border-t border-gray-100">
+          <div class="text-xs text-gray-400 mb-1">요구사항 (${chatData.requirements.length}건)</div>
+          <div class="space-y-1">
+            ${chatData.requirements.map(r => `<div class="text-xs text-gray-700">• ${r.title}</div>`).join('')}
+          </div>
+        </div>` : ''}
         ${chatData.linkedTickets.length > 0 ? `
         <div class="pt-2.5 border-t border-gray-100">
           <div class="text-xs text-gray-400 mb-1">연관 티켓 (${chatData.linkedTickets.length}건)</div>
@@ -931,7 +1178,6 @@ async function chatSubmitTicket() {
         ticketTypeId: a.ticketTypeId,
         title: a.title,
         description: descParts,
-        priority: a.priority || 'MEDIUM',
         dueDate: a.dueDate || null,
         subCategory: a.subCategory || null,
         targetSystem: a.targetSystem || null,
@@ -945,6 +1191,34 @@ async function chatSubmitTicket() {
     });
     for (const linked of chatData.linkedTickets) {
       try { await api(`/tickets/${ticket.id}/relations`, { method:'POST', body:{ relatedTicketId:linked.id, relationType:'RELATED_TO' } }); } catch {}
+    }
+    const createdReqs = await Promise.all(chatData.requirements.map(r =>
+      api(`/tickets/${ticket.id}/requirements`, { method: 'POST', body: { title: r.title, description: r.description || null } })
+    ));
+    await Promise.allSettled(createdReqs.map(async (req, i) => {
+      const chatReq = chatData.requirements[i];
+      if (!req?.id) return;
+      if (chatReq?.images?.length) {
+        await Promise.allSettled(chatReq.images.map(img =>
+          api(`/collab/requirements/${req.id}/annotations`, {
+            method: 'POST', body: { imageData: img.imageData, shapes: img.shapes || [] },
+          })
+        ));
+      }
+      if (chatReq?.files?.length) {
+        const fd = new FormData();
+        chatReq.files.forEach(f => fd.append('files', f));
+        const token = localStorage.getItem('token');
+        await fetch(`/api/collab/requirements/${req.id}/files`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
+        }).catch(() => {});
+      }
+    }));
+    // DEV 유형: 요구사항 등록 단계 자동 제출 → 요구사항 검토 단계로 이동
+    if (a._typeCode === 'DEV') {
+      await api(`/tickets/${ticket.id}/process`, { method: 'POST', body: { action: 'COMPLETED', comment: '요구사항 등록 완료' } }).catch(() => {});
     }
     toast('티켓이 등록되었습니다!');
     navigate('ticket-detail', { id: ticket.id });
@@ -1011,22 +1285,41 @@ async function renderCreateTicketForm() {
         <!-- 옵션 -->
         <div class="form-card">
           <div class="form-card-header"><div class="form-card-header-bar"></div><span class="form-card-title">옵션</span></div>
-          <div class="form-card-body grid grid-cols-2 gap-4">
-            <div><label class="form-label">우선순위</label>
-              <select id="q-pri" class="form-select"><option value="LOW">낮음</option><option value="MEDIUM" selected>보통</option><option value="HIGH">높음</option><option value="CRITICAL">긴급</option></select></div>
-            <div><label class="form-label">요청기한</label><input id="q-due" type="date" min="${today}" class="form-input" /></div>
+          <div class="form-card-body">
+            <div>
+              <label class="form-label">요청기한</label>
+              <input id="q-due" type="date" min="${today}" class="form-input" />
+              <p class="text-xs text-gray-400 mt-1">기한에 따라 우선순위가 자동으로 결정됩니다 (7일↓ 긴급 / 14일↓ 높음 / 30일↓ 보통 / 그 이상 낮음)</p>
+            </div>
           </div>
         </div>
-        <!-- IT BA -->
+        <!-- 업무 도메인 + IT BA -->
         <div class="form-card">
-          <div class="form-card-header"><div class="form-card-header-bar"></div><span class="form-card-title">IT BA <span class="text-red-500">*</span></span></div>
-          <div class="form-card-body">
-            <div class="relative">
-              <div id="q-ba-box" class="form-input flex items-center gap-2 flex-wrap cursor-text min-h-[44px]" onclick="document.getElementById('q-ba').focus()">
-                <div id="q-ba-tag" class="hidden user-tag"><span id="q-ba-txt"></span><button type="button" onclick="ctState.itBa=null;document.getElementById('q-ba-tag').classList.add('hidden');document.getElementById('q-ba').placeholder='이름으로 검색...'">&times;</button></div>
-                <input id="q-ba" type="text" placeholder="이름으로 검색..." autocomplete="off" class="flex-1 outline-none text-sm bg-transparent min-w-[140px]" />
+          <div class="form-card-header"><div class="form-card-header-bar"></div><span class="form-card-title">업무 도메인 &amp; IT BA</span></div>
+          <div class="form-card-body space-y-4">
+            <div>
+              <label class="form-label">업무 도메인</label>
+              <select id="q-biz-domain" class="form-select" onchange="qOnDomainChange(this.value)">
+                <option value="">선택하세요</option>
+                ${CHAT_BIZ_DOMAINS.map(d=>`<option value="${d}">${d}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="form-label">IT BA <span class="text-red-500">*</span></label>
+              <div id="q-ba-auto-badge" class="hidden mb-2 flex items-center gap-2 p-2.5 bg-green-50 border border-green-200 rounded-lg">
+                <span class="text-xs font-semibold text-green-700">✓ 자동 배정</span>
+                <span id="q-ba-auto-name" class="text-sm font-medium text-green-800"></span>
+                <button type="button" onclick="qClearAutoItba()" class="ml-auto text-xs text-gray-400 hover:text-red-500 border border-gray-200 rounded px-2 py-0.5">변경</button>
               </div>
-              <div id="q-ba-dd" class="hidden search-dropdown"><div id="q-ba-res"></div></div>
+              <div id="q-ba-manual">
+                <div class="relative">
+                  <div id="q-ba-box" class="form-input flex items-center gap-2 flex-wrap cursor-text min-h-[44px]" onclick="document.getElementById('q-ba').focus()">
+                    <div id="q-ba-tag" class="hidden user-tag"><span id="q-ba-txt"></span><button type="button" onclick="ctState.itBa=null;document.getElementById('q-ba-tag').classList.add('hidden');document.getElementById('q-ba').placeholder='이름으로 검색...'">&times;</button></div>
+                    <input id="q-ba" type="text" placeholder="이름으로 검색..." autocomplete="off" class="flex-1 outline-none text-sm bg-transparent min-w-[140px]" />
+                  </div>
+                  <div id="q-ba-dd" class="hidden search-dropdown"><div id="q-ba-res"></div></div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1111,6 +1404,32 @@ async function renderCreateTicketForm() {
   });
   // 합의 토글
   $$('input[name="q-con-yn"]').forEach(r => r.addEventListener('change', function() { $('#q-con-sec').classList.toggle('hidden', this.value==='N'); }));
+
+  // 도메인 자동 배정
+  window.qOnDomainChange = async function(domain) {
+    if (!domain) return;
+    try {
+      const itba = await api(`/common/domain-itba-mapping?domain=${encodeURIComponent(domain)}`);
+      if (itba) {
+        ctState.itBa = itba;
+        $('#q-ba-auto-name').textContent = `${itba.name} (${itba.department?.name || roleLabel[itba.role]})`;
+        $('#q-ba-auto-badge').classList.remove('hidden');
+        $('#q-ba-manual').classList.add('hidden');
+      } else {
+        $('#q-ba-auto-badge').classList.add('hidden');
+        $('#q-ba-manual').classList.remove('hidden');
+      }
+    } catch (e) {
+      $('#q-ba-auto-badge').classList.add('hidden');
+      $('#q-ba-manual').classList.remove('hidden');
+    }
+  };
+  window.qClearAutoItba = function() {
+    ctState.itBa = null;
+    $('#q-ba-auto-badge').classList.add('hidden');
+    $('#q-ba-manual').classList.remove('hidden');
+    $('#q-ba').focus();
+  };
 
   // IT BA 검색
   chatSetupUserDD('#q-ba', '#q-ba-dd', '/common/users/it-ba', user => {
@@ -1363,8 +1682,9 @@ async function renderCreateTicketForm() {
     try {
       const ticket = await api('/tickets', { method:'POST', body:{
         ticketTypeId: ts.value, title: $('#q-title').value.trim(),
-        description: $('#q-desc').value.trim(), priority: $('#q-pri').value,
+        description: $('#q-desc').value.trim(),
         dueDate: $('#q-due').value||null, subCategory, targetSystem,
+        businessDomain: $('#q-biz-domain').value || null,
         itBaId: ctState.itBa?.id||null,
         consensusApproverIds: needCon ? qConApprovers.map(u=>u.id) : [],
       }});
@@ -1407,8 +1727,12 @@ async function renderCreateTicketForm() {
           method: 'POST', body: { userIds: qWatchers.map(u => u.id) },
         }).catch(() => {});
       }
+      // DEV 유형: 요구사항 등록 단계 자동 제출 → 요구사항 검토 단계로 이동
+      if (code === 'DEV') {
+        await api(`/tickets/${ticket.id}/process`, { method: 'POST', body: { action: 'COMPLETED', comment: '요구사항 등록 완료' } }).catch(() => {});
+      }
       toast('티켓이 등록되었습니다.');
-      navigate('tickets');
+      navigate('ticket-detail', { id: ticket.id });
     } catch (err) { toast(err.message,'error'); }
   });
 }
@@ -1451,11 +1775,37 @@ async function renderTicketDetail({ id }) {
           <div class="col-span-2 space-y-5">
 
             <!-- 요구사항 -->
-            <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <div class="bg-white rounded-xl border ${['요구사항 등록','요구사항 검토'].includes(ticket.currentStage?.name) ? 'border-blue-400' : 'border-gray-200'} p-6">
               <div class="flex items-center justify-between mb-4">
-                <h3 class="font-semibold text-gray-800">요구사항</h3>
-                <button onclick="openReqModal('${ticket.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition">+ 요구사항 추가</button>
+                <h3 class="font-semibold text-gray-800">요구사항${ticket.currentStage?.name === '요구사항 등록' ? ' <span class="text-xs text-blue-600 font-normal ml-1">(등록 단계)</span>' : ticket.currentStage?.name === '요구사항 검토' ? ' <span class="text-xs text-indigo-600 font-normal ml-1">(IT BA 검토 중)</span>' : ''}</h3>
+                ${ticket.currentStage?.name === '요구사항 등록' && ticket.requesterId === currentUser.id
+                  ? `<button onclick="openReqModal('${ticket.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition">+ 요구사항 추가</button>`
+                  : !['요구사항 등록','요구사항 검토'].includes(ticket.currentStage?.name)
+                    ? `<button onclick="openReqModal('${ticket.id}')" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium transition">+ 요구사항 추가</button>`
+                    : ''}
               </div>
+              ${(() => {
+                const stageName = ticket.currentStage?.name;
+                if (stageName === '요구사항 등록') {
+                  const returnedHistory = ticket.stageHistories?.slice().reverse()
+                    .find(h => h.action === 'RETURNED' && h.stage?.name === '요구사항 검토');
+                  if (returnedHistory) {
+                    return `<div class="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-lg">
+                      <div class="text-xs font-semibold text-yellow-800 mb-1">↩ IT BA 보완 요청</div>
+                      <div class="text-sm text-yellow-700">${returnedHistory.comment || '요구사항을 더 명확하게 작성해 주세요.'}</div>
+                      <div class="text-xs text-yellow-500 mt-1">${returnedHistory.actor?.name} · ${formatDate(returnedHistory.createdAt)}</div>
+                    </div>`;
+                  }
+                  return `<div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">요구사항을 상세히 등록한 후 제출 버튼을 눌러주세요. IT BA가 검토 후 승인하거나 보완을 요청합니다.</div>`;
+                }
+                if (stageName === '요구사항 검토') {
+                  if (['DEVELOPER','MANAGER','ADMIN'].includes(currentUser.role)) {
+                    return `<div class="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">각 요구사항의 검토 상태를 설정하세요. <b>수용</b>된 요구사항부터 개발을 시작할 수 있습니다. 전체 검토가 완료되면 <b>요구사항 승인</b>으로 다음 단계로 진행하세요.</div>`;
+                  }
+                  return `<div class="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700">IT BA가 요구사항을 검토하고 있습니다. 검토 결과는 아래 요구사항 목록에서 확인할 수 있습니다.</div>`;
+                }
+                return '';
+              })()}
               <div id="req-list"><div class="text-sm text-gray-400">불러오는 중...</div></div>
             </div>
 
@@ -1577,28 +1927,6 @@ async function renderTicketDetail({ id }) {
           <div id="test-case-list"><div class="text-sm text-gray-400">불러오는 중...</div></div>
         </div>
 
-            <!-- 결함 -->
-            <div class="bg-white rounded-xl border border-gray-200 p-6" id="defect-section">
-              <div class="flex items-center justify-between mb-4">
-                <h3 class="font-semibold text-gray-800">결함 목록</h3>
-                <button onclick="showDefectForm('${ticket.id}')" class="text-xs text-red-700 font-medium hover:underline">+ 결함 등록</button>
-              </div>
-              <div id="defect-form" class="hidden mb-4 p-4 bg-red-50 rounded-xl space-y-3">
-                <div><input id="df-title" type="text" placeholder="결함 제목 *" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" /></div>
-                <div><textarea id="df-desc" placeholder="결함 설명 *" rows="3" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"></textarea></div>
-                <div class="flex items-center gap-2">
-                  <select id="df-severity" class="form-select flex-1">
-                    <option value="LOW">낮음(LOW)</option>
-                    <option value="MEDIUM" selected>보통(MEDIUM)</option>
-                    <option value="HIGH">높음(HIGH)</option>
-                    <option value="CRITICAL">긴급(CRITICAL)</option>
-                  </select>
-                  <button onclick="submitDefect('${ticket.id}')" class="bg-red-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-red-700">저장</button>
-                  <button onclick="$('#defect-form').classList.add('hidden')" class="text-sm text-gray-500 hover:text-gray-700">취소</button>
-                </div>
-              </div>
-              <div id="defect-list"><div class="text-sm text-gray-400">불러오는 중...</div></div>
-            </div>
 
             <!-- 운영 이관 -->
             <div class="bg-white rounded-xl border border-gray-200 p-6" id="deploy-section">
@@ -1830,7 +2158,8 @@ async function renderTicketDetail({ id }) {
 
     const programImpactSection = $('#program-impact-section');
     if (programImpactSection) {
-      if (showFromCollaborate) {
+      const isItba = ['DEVELOPER', 'MANAGER', 'ADMIN'].includes(currentUser.role);
+      if (showFromCollaborate && isItba) {
         programImpactSection.classList.remove('hidden');
         loadProgramImpacts(ticket.id);
         initItbaForm(ticket);
@@ -1844,7 +2173,6 @@ async function renderTicketDetail({ id }) {
       if (showFromCollaborate) {
         testSection.classList.remove('hidden');
         loadTestCases(ticket.id);
-        loadDefects(ticket.id);
       } else {
         testSection.classList.add('hidden');
       }
@@ -1972,6 +2300,31 @@ async function removeWatcher(ticketId, userId) {
 const reqStatusLabel = { ACTIVE:'진행중', COMPLETED:'완료', CANCELLED:'취소' };
 const reqStatusColor = { ACTIVE:'bg-blue-100 text-blue-700', COMPLETED:'bg-green-100 text-green-700', CANCELLED:'bg-gray-100 text-gray-400 line-through' };
 
+const reviewStatusLabel = { PENDING:'검토 대기', REVIEWING:'검토 중', ACCEPTED:'수용', NEGOTIATING:'협의 중', DEFERRED:'보류', REJECTED:'불가' };
+const reviewStatusColor = {
+  PENDING:    'bg-gray-100 text-gray-500',
+  REVIEWING:  'bg-blue-100 text-blue-700',
+  ACCEPTED:   'bg-green-100 text-green-700',
+  NEGOTIATING:'bg-yellow-100 text-yellow-700',
+  DEFERRED:   'bg-orange-100 text-orange-600',
+  REJECTED:   'bg-red-100 text-red-600',
+};
+
+function calcReviewAggregate(reqs) {
+  const active = reqs.filter(r => r.status !== 'CANCELLED');
+  if (!active.length) return null;
+  const counts = {};
+  for (const r of active) counts[r.reviewStatus] = (counts[r.reviewStatus] || 0) + 1;
+  const accepted = counts.ACCEPTED || 0;
+  const total = active.length;
+  if (active.every(r => r.reviewStatus === 'PENDING')) return null;
+  if (accepted === total) return { label: '✅ 전체 수용', color: 'bg-green-100 text-green-800 border-green-300' };
+  if (counts.NEGOTIATING)  return { label: `💬 요구사항 협의 중`, color: 'bg-yellow-100 text-yellow-800 border-yellow-300' };
+  if (accepted > 0)        return { label: `⚡ 부분 수용 (${accepted}/${total})`, color: 'bg-blue-100 text-blue-800 border-blue-300' };
+  if (counts.REVIEWING)    return { label: '🔍 검토 중', color: 'bg-indigo-100 text-indigo-800 border-indigo-300' };
+  return null;
+}
+
 async function loadRequirements(ticketId, showAnnotation = true) {
   const el = $('#req-list');
   if (!el) return;
@@ -1979,35 +2332,60 @@ async function loadRequirements(ticketId, showAnnotation = true) {
     const reqs = await api(`/tickets/${ticketId}/requirements`);
     if (!reqs.length) { el.innerHTML = '<div class="text-sm text-gray-400">등록된 요구사항이 없습니다.</div>'; return; }
 
-    const active = reqs.filter(r => r.status === 'ACTIVE').length;
     const completed = reqs.filter(r => r.status === 'COMPLETED').length;
     const total = reqs.filter(r => r.status !== 'CANCELLED').length;
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const agg = calcReviewAggregate(reqs);
+
+    // IT BA 검토 단계 여부 (현재 열려있는 티켓 컨텍스트에서 판단)
+    const isItbaReviewStage = !!document.querySelector('[data-stage-name="요구사항 검토"]');
+    const canSetReview = ['DEVELOPER','MANAGER','ADMIN'].includes(currentUser.role);
 
     el.innerHTML = `
-      <div class="mb-3">
-        <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+      <div class="mb-3 space-y-2">
+        ${agg ? `<div class="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${agg.color}">${agg.label}</div>` : ''}
+        <div class="flex items-center justify-between text-xs text-gray-500">
           <span>완료 ${completed} / ${total}건</span>
           <span class="font-semibold ${pct === 100 ? 'text-green-600' : 'text-blue-600'}">${pct}%</span>
         </div>
-        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
           <div class="h-full rounded-full ${pct === 100 ? 'bg-green-500' : 'bg-blue-500'} transition-all" style="width:${pct}%"></div>
         </div>
       </div>
       <div class="space-y-2">
         ${reqs.map(r => {
           const hasAnnotations = r.annotations && r.annotations.length > 0;
-          const safeTitle = r.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const isCancelled = r.status === 'CANCELLED';
+          const reviewBadge = !isCancelled
+            ? `<span class="text-xs px-2 py-0.5 rounded-full font-medium ${reviewStatusColor[r.reviewStatus] || 'bg-gray-100 text-gray-400'} shrink-0">${reviewStatusLabel[r.reviewStatus] || r.reviewStatus}</span>`
+            : '';
+          const reviewNote = r.reviewNote
+            ? `<div class="px-4 pb-2 text-xs text-gray-500 italic">"${r.reviewNote}"</div>`
+            : '';
+          const reviewButtons = canSetReview && !isCancelled ? `
+            <div class="px-4 pb-3 flex flex-wrap gap-1.5" onclick="event.stopPropagation()">
+              ${[
+                ['REVIEWING',  '검토 중',  'text-blue-600 border-blue-200 hover:bg-blue-50'],
+                ['ACCEPTED',   '수용',     'text-green-600 border-green-200 hover:bg-green-50'],
+                ['NEGOTIATING','협의 중',  'text-yellow-700 border-yellow-200 hover:bg-yellow-50'],
+                ['DEFERRED',   '보류',     'text-orange-600 border-orange-200 hover:bg-orange-50'],
+                ['REJECTED',   '불가',     'text-red-600 border-red-200 hover:bg-red-50'],
+              ].map(([val, label, cls]) => `
+                <button onclick="setReviewStatus('${r.id}','${ticketId}','${val}')"
+                  class="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${cls} ${r.reviewStatus === val ? 'ring-2 ring-offset-1 ring-current' : ''}">
+                  ${label}
+                </button>`).join('')}
+            </div>` : '';
           return `
-          <div class="border border-gray-100 rounded-xl overflow-hidden group hover:border-blue-200 transition-colors">
-            <div class="flex items-center gap-3 px-4 py-3 ${r.status === 'CANCELLED' ? 'bg-gray-50' : 'bg-white hover:bg-blue-50/30'} cursor-pointer transition-colors"
+          <div class="border ${isCancelled ? 'border-gray-100' : reviewStatusBorder(r.reviewStatus)} rounded-xl overflow-hidden group transition-colors">
+            <div class="flex items-center gap-3 px-4 py-3 ${isCancelled ? 'bg-gray-50' : 'bg-white hover:bg-gray-50/60'} cursor-pointer transition-colors"
               onclick="openReqDetailModal('${r.id}','${ticketId}')">
               <span class="text-xs px-2 py-0.5 rounded font-medium ${reqStatusColor[r.status]} shrink-0">${reqStatusLabel[r.status]}</span>
-              <span class="flex-1 text-sm font-medium ${r.status === 'CANCELLED' ? 'text-gray-400 line-through' : 'text-gray-800'}">${r.title}</span>
-              <span class="text-xs text-gray-300">v${r.version}</span>
+              ${reviewBadge}
+              <span class="flex-1 text-sm font-medium ${isCancelled ? 'text-gray-400 line-through' : 'text-gray-800'}">${r.title}</span>
+              <span class="text-xs text-gray-300 shrink-0">v${r.version}</span>
               ${hasAnnotations ? `<span class="text-xs text-indigo-500 font-medium shrink-0">🖼️ ${r.annotations.length}장</span>` : ''}
-              ${r.histories.length > 0 ? `<span class="text-xs text-gray-300">이력 ${r.histories.length}건</span>` : ''}
-              ${showAnnotation && currentUser.role !== 'USER' && r.status !== 'CANCELLED' ? `
+              ${showAnnotation && currentUser.role !== 'USER' && !isCancelled ? `
               <button id="ai-tc-btn-${r.id}"
                 onclick="event.stopPropagation(); aiGenerateTestCases('${r.id}','${ticketId}', this)"
                 class="shrink-0 text-xs px-2 py-1 rounded-lg bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100 transition-colors font-medium">
@@ -2015,10 +2393,31 @@ async function loadRequirements(ticketId, showAnnotation = true) {
               </button>` : ''}
               <span class="text-xs text-gray-400 group-hover:text-blue-500 shrink-0">→</span>
             </div>
+            ${reviewNote}
+            ${reviewButtons}
           </div>`;
         }).join('')}
       </div>`;
   } catch (err) { el.innerHTML = `<div class="text-red-500 text-sm">${err.message}</div>`; }
+}
+
+function reviewStatusBorder(rs) {
+  return { ACCEPTED:'border-green-200', NEGOTIATING:'border-yellow-200', REVIEWING:'border-blue-200', DEFERRED:'border-orange-200', REJECTED:'border-red-200' }[rs] || 'border-gray-100';
+}
+
+async function setReviewStatus(reqId, ticketId, reviewStatus) {
+  let reviewNote = null;
+  if (reviewStatus === 'REJECTED' || reviewStatus === 'DEFERRED') {
+    reviewNote = prompt(reviewStatus === 'REJECTED' ? '불가 사유를 입력하세요 (선택)' : '보류 사유를 입력하세요 (선택)');
+    if (reviewNote === null) return; // 취소
+  }
+  try {
+    await api(`/tickets/requirements/${reqId}/review-status`, {
+      method: 'PATCH',
+      body: { reviewStatus, reviewNote: reviewNote || null },
+    });
+    loadRequirements(ticketId, true);
+  } catch (err) { toast(err.message, 'error'); }
 }
 
 async function aiGenerateTestCases(reqId, ticketId, btn) {
@@ -2312,8 +2711,10 @@ async function openReqDetailModal(reqId, ticketId) {
     document.getElementById('req-detail-body').innerHTML = `
       <div class="space-y-5">
         <!-- 기본 정보 -->
-        <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="text-xs px-2.5 py-1 rounded-full font-medium ${reqStatusColor[req.status]}">${reqStatusLabel[req.status]}</span>
+          <span class="text-xs px-2.5 py-1 rounded-full font-medium border ${reviewStatusColor[req.reviewStatus] || 'bg-gray-100 text-gray-500'}">${reviewStatusLabel[req.reviewStatus] || req.reviewStatus}</span>
+          ${req.reviewNote ? `<span class="text-xs text-gray-500 italic">"${req.reviewNote}"</span>` : ''}
           <span class="text-xs text-gray-400">v${req.version}</span>
           <span class="text-xs text-gray-400">등록: ${req.createdBy.name} · ${formatDate(req.createdAt)}</span>
         </div>
@@ -3959,25 +4360,33 @@ function renderProcessPanel(ticket, stages, currentIdx) {
 
   // 단계 유형별 버튼 구성
   let buttons = '';
+  const prevStage = stages[currentIdx - 1];
+  const prevIsRequesterStage = prevStage?.isRequesterStage;
+
   if (actionType === 'CONFIRM') {
     buttons = `<button onclick="processTicket('${ticket.id}', 'COMPLETED')" class="bg-green-500 hover:bg-green-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">확인완료</button>`;
   } else if (actionType === 'APPROVE' || actionType === 'CONSENSUS') {
+    const isReqReview = stage.name === '요구사항 검토';
     buttons = `
-      <button onclick="processTicket('${ticket.id}', 'APPROVED')" class="bg-green-500 hover:bg-green-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">승인</button>
-      ${currentIdx > 0 ? `<button onclick="processTicket('${ticket.id}', 'RETURNED')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">반려(이전단계)</button>` : ''}
+      <button onclick="processTicket('${ticket.id}', 'APPROVED')" class="bg-green-500 hover:bg-green-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">${isReqReview ? '요구사항 승인' : '승인'}</button>
+      ${currentIdx > 0 ? `<button onclick="processTicket('${ticket.id}', 'RETURNED')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">${isReqReview ? '보완 요청' : '반려(이전단계)'}</button>` : ''}
       <button onclick="processTicket('${ticket.id}', 'REJECTED')" class="bg-red-500 hover:bg-red-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">반려(종결)</button>
     `;
+  } else if (stage.name === '요구사항 등록') {
+    // 요구사항 등록 단계: 요구사항 존재 여부 검증 후 제출
+    buttons = `<button onclick="submitRequirementsStage('${ticket.id}')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg transition font-medium">요구사항 제출</button>`;
   } else {
     buttons = `
       <button onclick="processTicket('${ticket.id}', 'COMPLETED')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg transition font-medium">처리완료</button>
-      ${currentIdx > 0 ? `<button onclick="processTicket('${ticket.id}', 'RETURNED')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">반려(이전단계)</button>` : ''}
+      ${prevIsRequesterStage ? `<button onclick="processTicket('${ticket.id}', 'RETURNED')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">요구사항 재작성 요청</button>` : currentIdx > 0 ? `<button onclick="processTicket('${ticket.id}', 'RETURNED')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-sm px-5 py-2 rounded-lg transition font-medium">반려(이전단계)</button>` : ''}
     `;
   }
 
   return `
-    <div class="bg-blue-50 border border-blue-200 rounded-xl p-6">
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-6" data-stage-name="${stage.name}">
       <h3 class="font-semibold text-blue-800 mb-1">현재 단계: ${stage.name}</h3>
       <p class="text-sm text-blue-600 mb-3">담당 역할: ${roleLabel[stage.requiredRole]}</p>
+      ${stage.name === '요구사항 검토' ? `<p class="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-2 mb-3">요구사항별로 검토 상태를 설정하세요. 개발 착수 준비가 되면 <b>요구사항 승인</b>을 눌러 다음 단계로 진행합니다.</p>` : ''}
       <textarea id="process-comment" rows="3" placeholder="처리 의견 (선택)" class="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none mb-3"></textarea>
       <div class="flex gap-2 flex-wrap">${buttons}</div>
     </div>
@@ -4054,6 +4463,22 @@ function renderAssigneeTags() {
       <button type="button" onclick="removeAssignee('${d.id}')" class="hover:text-red-600 font-bold ml-0.5">✕</button>
     </span>
   `).join('');
+}
+
+async function submitRequirementsStage(ticketId) {
+  try {
+    const reqs = await api(`/tickets/${ticketId}/requirements`);
+    const active = reqs.filter(r => r.status !== 'CANCELLED');
+    if (active.length === 0) {
+      return toast('요구사항을 1개 이상 등록해야 제출할 수 있습니다.', 'error');
+    }
+    const comment = $('#process-comment')?.value;
+    const res = await api(`/tickets/${ticketId}/process`, { method: 'POST', body: { action: 'COMPLETED', comment } });
+    toast(res.message || '요구사항이 제출되었습니다. IT BA 영향도분석 단계로 이동합니다.');
+    renderTicketDetail({ id: ticketId });
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 async function processTicket(ticketId, action) {
@@ -4924,6 +5349,129 @@ function resetAuditFilter() {
 function auditChangePage(page) {
   auditPage = page;
   loadAuditLogs();
+}
+
+// ── 도메인-IT BA 매핑 관리 ───────────────────────────────────
+async function renderAdminDomainItba() {
+  const el = $('#page-content');
+  el.innerHTML = `
+    <div class="max-w-3xl mx-auto space-y-6">
+      <div class="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">도메인 매핑 추가 / 변경</h3>
+        <div class="flex gap-3 items-end flex-wrap">
+          <div class="flex-1 min-w-[180px]">
+            <label class="text-xs text-gray-500 block mb-1">업무 도메인</label>
+            <select id="dim-domain" class="form-select text-sm w-full">
+              <option value="">선택하세요</option>
+              ${CHAT_BIZ_DOMAINS.map(d => `<option value="${d}">${d}</option>`).join('')}
+            </select>
+          </div>
+          <div class="flex-1 min-w-[220px]">
+            <label class="text-xs text-gray-500 block mb-1">담당 IT BA</label>
+            <div class="relative">
+              <input id="dim-ba-inp" type="text" placeholder="이름으로 검색..." autocomplete="off"
+                class="form-input text-sm w-full" />
+              <div id="dim-ba-dd" class="user-dropdown hidden"></div>
+            </div>
+            <div id="dim-ba-tag" class="hidden mt-1.5 flex items-center gap-2 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+              <span id="dim-ba-txt" class="flex-1 font-medium text-blue-800"></span>
+              <button type="button" onclick="dimClearBa()" class="text-gray-400 hover:text-red-500">&times;</button>
+            </div>
+          </div>
+          <button onclick="dimSave()" class="nh-btn px-5 py-2 rounded-lg text-white text-sm font-medium">저장</button>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <span class="text-sm font-semibold text-gray-700">매핑 목록</span>
+          <span id="dim-count" class="text-xs text-gray-400"></span>
+        </div>
+        <div id="dim-list">
+          <div class="px-5 py-8 text-center text-gray-400 text-sm">불러오는 중...</div>
+        </div>
+      </div>
+    </div>`;
+
+  let dimBaUser = null;
+
+  window.dimClearBa = function() {
+    dimBaUser = null;
+    $('#dim-ba-tag').classList.add('hidden');
+    $('#dim-ba-inp').value = '';
+    $('#dim-ba-inp').placeholder = '이름으로 검색...';
+  };
+
+  chatSetupUserDD('#dim-ba-inp', '#dim-ba-dd', '/common/users/it-ba', user => {
+    dimBaUser = user;
+    $('#dim-ba-txt').textContent = `${user.name} (${user.department?.name || roleLabel[user.role]})`;
+    $('#dim-ba-tag').classList.remove('hidden');
+    $('#dim-ba-inp').value = ''; $('#dim-ba-inp').placeholder = '';
+    $('#dim-ba-dd').classList.add('hidden');
+  });
+
+  window.dimSave = async function() {
+    const domain = $('#dim-domain').value;
+    if (!domain) { toast('도메인을 선택해주세요.', 'error'); return; }
+    if (!dimBaUser) { toast('IT BA를 선택해주세요.', 'error'); return; }
+    try {
+      await api('/admin/domain-itba-mappings', { method: 'POST', body: { domain, itbaId: dimBaUser.id } });
+      toast('저장되었습니다.');
+      $('#dim-domain').value = '';
+      dimClearBa();
+      await dimLoadList();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  window.dimDelete = async function(id, domain) {
+    if (!confirm(`"${domain}" 매핑을 삭제할까요?`)) return;
+    try {
+      await api(`/admin/domain-itba-mappings/${id}`, { method: 'DELETE' });
+      toast('삭제되었습니다.');
+      await dimLoadList();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  async function dimLoadList() {
+    const listEl = $('#dim-list');
+    if (!listEl) return;
+    try {
+      const mappings = await api('/admin/domain-itba-mappings');
+      $('#dim-count').textContent = `총 ${mappings.length}건`;
+      if (!mappings.length) {
+        listEl.innerHTML = '<div class="px-5 py-8 text-center text-gray-400 text-sm">등록된 매핑이 없습니다.</div>';
+        return;
+      }
+      listEl.innerHTML = `
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase">
+            <tr>
+              <th class="px-5 py-3 text-left">업무 도메인</th>
+              <th class="px-5 py-3 text-left">담당 IT BA</th>
+              <th class="px-5 py-3 text-left">소속 부서</th>
+              <th class="px-5 py-3 text-left">역할</th>
+              <th class="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            ${mappings.map(m => `
+              <tr class="hover:bg-gray-50">
+                <td class="px-5 py-3 font-medium">${m.domain}</td>
+                <td class="px-5 py-3">${m.itba?.name || '-'}</td>
+                <td class="px-5 py-3 text-gray-500">${m.itba?.department?.name || '-'}</td>
+                <td class="px-5 py-3 text-gray-500">${roleLabel[m.itba?.role] || m.itba?.role || '-'}</td>
+                <td class="px-5 py-3 text-right">
+                  <button onclick="dimDelete('${m.id}','${m.domain}')"
+                    class="text-xs text-red-400 hover:text-red-600 hover:bg-red-50 px-2 py-1 rounded">삭제</button>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch (err) {
+      listEl.innerHTML = `<div class="px-5 py-4 text-red-500 text-sm">${err.message}</div>`;
+    }
+  }
+
+  await dimLoadList();
 }
 
 // ── 앱 시작 ───────────────────────────────────────────────
