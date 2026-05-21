@@ -231,6 +231,7 @@ function navigate(page, params = {}) {
     'admin-deployments': renderAdminDeployments,
     'admin-audit': renderAdminAudit,
     'admin-crud': renderAdminCrud,
+    'admin-domain-mapping': renderAdminDomainMapping,
   };
 
   const titles = {
@@ -240,6 +241,7 @@ function navigate(page, params = {}) {
     'admin-deployments': '이관 현황',
     'admin-audit': '감사 로그',
     'admin-crud': '전체 데이터 관리',
+    'admin-domain-mapping': '도메인-IT BA 매핑 관리',
   };
 
   $('#page-title').textContent = titles[page] || '';
@@ -5030,6 +5032,175 @@ const CRUD_MODELS = {
     displayFields: ['ticket.ticketNumber', 'title', 'severity', 'status', 'reporter.name']
   }
 };
+
+// ── 도메인-IT BA 매핑 관리 ──────────────────────────────────────────
+async function renderAdminDomainMapping() {
+  const el = $('#page-content');
+  el.innerHTML = `
+    <div class="space-y-6">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 mt-0.5">비즈니스 도메인별 담당 IT BA를 매핑합니다. 티켓 등록 시 자동 배정에 사용됩니다.</p>
+        </div>
+        <button onclick="openDomainMappingModal()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          매핑 추가
+        </button>
+      </div>
+
+      <!-- 매핑 테이블 -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div id="domain-mapping-table-wrap">
+          <div class="p-8 text-center text-gray-400 text-sm">불러오는 중...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 매핑 추가/수정 모달 -->
+    <div id="domain-mapping-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 id="domain-mapping-modal-title" class="text-base font-bold text-gray-800">도메인-IT BA 매핑</h3>
+          <button onclick="closeDomainMappingModal()" class="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">비즈니스 도메인 <span class="text-red-500">*</span></label>
+            <select id="dm-domain" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+              <option value="">도메인 선택</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">담당 IT BA <span class="text-red-500">*</span></label>
+            <select id="dm-itba" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+              <option value="">IT BA 선택</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex gap-2 px-6 pb-6">
+          <button onclick="submitDomainMapping()" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2.5 rounded-lg font-medium transition-colors">저장</button>
+          <button onclick="closeDomainMappingModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm py-2.5 rounded-lg transition-colors">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+  await loadDomainMappings();
+}
+
+async function loadDomainMappings() {
+  const wrap = $('#domain-mapping-table-wrap');
+  if (!wrap) return;
+  try {
+    const mappings = await api('/admin/domain-itba-mappings');
+    if (!mappings.length) {
+      wrap.innerHTML = `<div class="p-10 text-center text-gray-400 text-sm">등록된 매핑이 없습니다.<br><span class="text-xs text-gray-300 mt-1 block">우측 상단 "매핑 추가" 버튼으로 등록하세요.</span></div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">도메인</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">담당 IT BA</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">부서</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">역할</th>
+            <th class="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">관리</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          ${mappings.map(m => `
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-5 py-3.5">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                  ${m.domain}
+                </span>
+              </td>
+              <td class="px-5 py-3.5 font-medium text-gray-800">${m.itba.name}</td>
+              <td class="px-5 py-3.5 text-gray-500">${m.itba.department?.name ?? '-'}</td>
+              <td class="px-5 py-3.5">
+                <span class="px-2 py-0.5 rounded text-xs font-medium ${m.itba.role === 'MANAGER' ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'}">${m.itba.role}</span>
+              </td>
+              <td class="px-5 py-3.5 text-right">
+                <button onclick="editDomainMapping('${m.id}','${m.domain}','${m.itba.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-medium mr-3">수정</button>
+                <button onclick="deleteDomainMapping('${m.id}','${m.domain}')" class="text-xs text-red-500 hover:text-red-700 font-medium">삭제</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">총 ${mappings.length}개 매핑</div>
+    `;
+  } catch {
+    wrap.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">데이터를 불러오지 못했습니다.</div>`;
+  }
+}
+
+async function openDomainMappingModal(id = null, domain = '', itbaId = '') {
+  const modal = $('#domain-mapping-modal');
+  const title = $('#domain-mapping-modal-title');
+  modal._editId = id;
+  title.textContent = id ? '도메인-IT BA 매핑 수정' : '도메인-IT BA 매핑 추가';
+
+  // 도메인 목록
+  const domainSel = $('#dm-domain');
+  try {
+    const domains = await api('/common/business-domains');
+    domainSel.innerHTML = '<option value="">도메인 선택</option>' +
+      domains.map(d => `<option value="${d}" ${d === domain ? 'selected' : ''}>${d}</option>`).join('');
+  } catch {
+    domainSel.innerHTML = '<option value="">불러오기 실패</option>';
+  }
+
+  // IT BA 목록
+  const itbaSel = $('#dm-itba');
+  try {
+    const users = await api('/common/users/it-ba');
+    itbaSel.innerHTML = '<option value="">IT BA 선택</option>' +
+      users.map(u => `<option value="${u.id}" ${u.id === itbaId ? 'selected' : ''}>${u.name} (${u.department?.name ?? u.role})</option>`).join('');
+  } catch {
+    itbaSel.innerHTML = '<option value="">불러오기 실패</option>';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function editDomainMapping(id, domain, itbaId) {
+  openDomainMappingModal(id, domain, itbaId);
+}
+
+function closeDomainMappingModal() {
+  const modal = $('#domain-mapping-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitDomainMapping() {
+  const domain = $('#dm-domain').value.trim();
+  const itbaId = $('#dm-itba').value;
+  if (!domain) { toast('도메인을 선택해주세요.', 'error'); return; }
+  if (!itbaId) { toast('IT BA를 선택해주세요.', 'error'); return; }
+  try {
+    await api('/admin/domain-itba-mappings', { method: 'POST', body: JSON.stringify({ domain, itbaId }) });
+    toast('저장되었습니다.', 'success');
+    closeDomainMappingModal();
+    await loadDomainMappings();
+  } catch (e) {
+    toast(e.message || '저장에 실패했습니다.', 'error');
+  }
+}
+
+async function deleteDomainMapping(id, domain) {
+  if (!confirm(`"${domain}" 도메인 매핑을 삭제하시겠습니까?`)) return;
+  try {
+    await api(`/admin/domain-itba-mappings/${id}`, { method: 'DELETE' });
+    toast('삭제되었습니다.', 'success');
+    await loadDomainMappings();
+  } catch (e) {
+    toast(e.message || '삭제에 실패했습니다.', 'error');
+  }
+}
+// ────────────────────────────────────────────────────────────────────
 
 let currentCrudModel = 'departments';
 let crudItemsCache = [];
