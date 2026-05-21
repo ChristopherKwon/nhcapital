@@ -152,6 +152,10 @@ function initApp(user) {
 
   if (['ADMIN', 'MANAGER'].includes(user.role)) {
     $('#admin-menu').classList.remove('hidden');
+    const crudLink = $('a[data-page="admin-crud"]');
+    if (crudLink) {
+      crudLink.classList.toggle('hidden', user.role !== 'ADMIN');
+    }
   }
 
   initSocket();
@@ -245,6 +249,8 @@ function navigate(page, params = {}) {
     'admin-defects': renderAdminDefects,
     'admin-deployments': renderAdminDeployments,
     'admin-audit': renderAdminAudit,
+    'admin-crud': renderAdminCrud,
+    'admin-domain-mapping': renderAdminDomainMapping,
   };
 
   const titles = {
@@ -253,6 +259,8 @@ function navigate(page, params = {}) {
     'admin-defects': '결함 관리',
     'admin-deployments': '이관 현황',
     'admin-audit': '감사 로그',
+    'admin-crud': '전체 데이터 관리',
+    'admin-domain-mapping': '도메인-IT BA 매핑 관리',
   };
 
   $('#page-title').textContent = titles[page] || '';
@@ -4943,6 +4951,619 @@ function resetAuditFilter() {
 function auditChangePage(page) {
   auditPage = page;
   loadAuditLogs();
+}
+
+// ── 마스터 데이터 관리 (ADMIN 전용 CRUD) ─────────────────────────
+const CRUD_MODELS = {
+  departments: {
+    label: '🏢 부서 관리',
+    fields: [
+      { name: 'code', label: '부서 코드', type: 'text', required: true, editable: false },
+      { name: 'name', label: '부서명', type: 'text', required: true },
+      { name: 'isActive', label: '활성화 여부', type: 'boolean', default: true }
+    ],
+    displayFields: ['code', 'name', 'isActive']
+  },
+  'ticket-types': {
+    label: '⚙️ 티켓 유형 관리',
+    fields: [
+      { name: 'code', label: '유형 코드', type: 'text', required: true, editable: false },
+      { name: 'name', label: '유형명', type: 'text', required: true },
+      { name: 'description', label: '설명', type: 'textarea' },
+      { name: 'isActive', label: '활성화 여부', type: 'boolean', default: true }
+    ],
+    displayFields: ['code', 'name', 'description', 'isActive']
+  },
+  'workflow-stages': {
+    label: '⛓️ 워크플로우 단계 관리',
+    fields: [
+      { name: 'ticketTypeId', label: '티켓 유형', type: 'relation', relationModel: 'ticket-types', displayField: 'name', required: true },
+      { name: 'stageOrder', label: '순서', type: 'number', required: true },
+      { name: 'name', label: '단계명', type: 'text', required: true },
+      { name: 'description', label: '설명', type: 'textarea' },
+      { name: 'requiredRole', label: '필요 권한', type: 'select', options: ['USER', 'APPROVER', 'DEVELOPER', 'MANAGER', 'ADMIN'], required: true },
+      { name: 'actionType', label: '작업 유형', type: 'select', options: ['SUBMIT', 'APPROVE', 'WORK', 'CONFIRM', 'CONSENSUS', 'COLLABORATE', 'PARALLEL_APPROVE', 'COMBINED_WORK'], required: true },
+      { name: 'isRequesterStage', label: '요청자 단계 여부', type: 'boolean', default: false },
+      { name: 'requiredDepartmentId', label: '필수 부서 (합의용)', type: 'relation', relationModel: 'departments', displayField: 'name', skippable: true },
+      { name: 'handlerDeptId', label: '담당 부서', type: 'relation', relationModel: 'departments', displayField: 'name', skippable: true },
+      { name: 'slaTargetHours', label: 'SLA 목표 시간 (시간)', type: 'number', skippable: true },
+      { name: 'isActive', label: '활성화 여부', type: 'boolean', default: true }
+    ],
+    displayFields: ['ticketType.name', 'stageOrder', 'name', 'requiredRole', 'actionType', 'isActive']
+  },
+  tickets: {
+    label: '🎫 티켓 관리',
+    fields: [
+      { name: 'ticketNumber', label: '티켓 번호', type: 'text', required: true, editable: false },
+      { name: 'ticketTypeId', label: '티켓 유형', type: 'relation', relationModel: 'ticket-types', displayField: 'name', required: true },
+      { name: 'title', label: '제목', type: 'text', required: true },
+      { name: 'description', label: '상세 설명', type: 'textarea', required: true },
+      { name: 'requesterId', label: '요청자', type: 'relation', relationModel: 'users', displayField: 'name', required: true },
+      { name: 'assigneeId', label: '담당 개발자', type: 'relation', relationModel: 'users', displayField: 'name', skippable: true },
+      { name: 'currentStageId', label: '현재 워크플로우 단계', type: 'relation', relationModel: 'workflow-stages', displayField: 'name', skippable: true },
+      { name: 'status', label: '상태', type: 'select', options: ['DRAFT', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CANCELLED'], required: true },
+      { name: 'priority', label: '우선순위', type: 'select', options: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], required: true },
+      { name: 'dueDate', label: '완료 희망일', type: 'date', skippable: true },
+      { name: 'subCategory', label: '서브 카테고리', type: 'text', skippable: true },
+      { name: 'targetSystem', label: '대상 시스템', type: 'text', skippable: true },
+      { name: 'businessDomain', label: '업무 도메인', type: 'text', skippable: true }
+    ],
+    displayFields: ['ticketNumber', 'ticketType.name', 'title', 'requester.name', 'assignee.name', 'status']
+  },
+  users: {
+    label: '👥 사용자 관리',
+    fields: [
+      { name: 'employeeId', label: '사번', type: 'text', required: true, editable: false },
+      { name: 'name', label: '이름', type: 'text', required: true },
+      { name: 'email', label: '이메일', type: 'text', required: true },
+      { name: 'password', label: '비밀번호 (재설정 시에만 입력)', type: 'password', ph: '비밀번호를 재설정할 때만 입력하세요' },
+      { name: 'role', label: '역할', type: 'select', options: ['USER', 'APPROVER', 'DEVELOPER', 'MANAGER', 'ADMIN'], required: true },
+      { name: 'departmentId', label: '부서', type: 'relation', relationModel: 'departments', displayField: 'name', skippable: true },
+      { name: 'isActive', label: '활성화 여부', type: 'boolean', default: true }
+    ],
+    displayFields: ['employeeId', 'name', 'email', 'department.name', 'role', 'isActive']
+  },
+  'test-cases': {
+    label: '🧪 테스트 케이스 관리',
+    fields: [
+      { name: 'ticketId', label: '대상 티켓', type: 'relation', relationModel: 'tickets', displayField: 'ticketNumber', required: true },
+      { name: 'title', label: '테스트 시나리오 제목', type: 'text', required: true },
+      { name: 'preconditions', label: '사전 조건', type: 'textarea' },
+      { name: 'testSteps', label: '테스트 단계', type: 'textarea', required: true },
+      { name: 'expectedResult', label: '예상 결과', type: 'textarea', required: true },
+      { name: 'priority', label: '우선순위', type: 'select', options: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], required: true },
+      { name: 'status', label: '상태', type: 'select', options: ['DRAFT', 'READY', 'PASS', 'FAIL', 'BLOCKED'], required: true },
+      { name: 'createdById', label: '작성자', type: 'relation', relationModel: 'users', displayField: 'name', required: true }
+    ],
+    displayFields: ['ticket.ticketNumber', 'title', 'priority', 'status', 'createdBy.name']
+  },
+  defects: {
+    label: '⚠️ 결함 관리',
+    fields: [
+      { name: 'ticketId', label: '대상 티켓', type: 'relation', relationModel: 'tickets', displayField: 'ticketNumber', required: true },
+      { name: 'title', label: '결함 제목', type: 'text', required: true },
+      { name: 'description', label: '상세 설명', type: 'textarea', required: true },
+      { name: 'severity', label: '심각도', type: 'select', options: ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'], required: true },
+      { name: 'status', label: '상태', type: 'select', options: ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED', 'REJECTED'], required: true },
+      { name: 'reporterId', label: '보고자', type: 'relation', relationModel: 'users', displayField: 'name', required: true },
+      { name: 'assigneeId', label: '조치 담당자', type: 'relation', relationModel: 'users', displayField: 'name', skippable: true }
+    ],
+    displayFields: ['ticket.ticketNumber', 'title', 'severity', 'status', 'reporter.name']
+  }
+};
+
+// ── 도메인-IT BA 매핑 관리 ──────────────────────────────────────────
+async function renderAdminDomainMapping() {
+  const el = $('#page-content');
+  el.innerHTML = `
+    <div class="space-y-6">
+      <!-- 헤더 -->
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-gray-500 mt-0.5">비즈니스 도메인별 담당 IT BA를 매핑합니다. 티켓 등록 시 자동 배정에 사용됩니다.</p>
+        </div>
+        <button onclick="openDomainMappingModal()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          매핑 추가
+        </button>
+      </div>
+
+      <!-- 매핑 테이블 -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div id="domain-mapping-table-wrap">
+          <div class="p-8 text-center text-gray-400 text-sm">불러오는 중...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 매핑 추가/수정 모달 -->
+    <div id="domain-mapping-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 id="domain-mapping-modal-title" class="text-base font-bold text-gray-800">도메인-IT BA 매핑</h3>
+          <button onclick="closeDomainMappingModal()" class="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+        </div>
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">비즈니스 도메인 <span class="text-red-500">*</span></label>
+            <select id="dm-domain" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+              <option value="">도메인 선택</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1.5">담당 IT BA <span class="text-red-500">*</span></label>
+            <select id="dm-itba" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+              <option value="">IT BA 선택</option>
+            </select>
+          </div>
+        </div>
+        <div class="flex gap-2 px-6 pb-6">
+          <button onclick="submitDomainMapping()" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2.5 rounded-lg font-medium transition-colors">저장</button>
+          <button onclick="closeDomainMappingModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm py-2.5 rounded-lg transition-colors">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+  await loadDomainMappings();
+}
+
+async function loadDomainMappings() {
+  const wrap = $('#domain-mapping-table-wrap');
+  if (!wrap) return;
+  try {
+    const mappings = await api('/admin/domain-itba-mappings');
+    if (!mappings.length) {
+      wrap.innerHTML = `<div class="p-10 text-center text-gray-400 text-sm">등록된 매핑이 없습니다.<br><span class="text-xs text-gray-300 mt-1 block">우측 상단 "매핑 추가" 버튼으로 등록하세요.</span></div>`;
+      return;
+    }
+    wrap.innerHTML = `
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">도메인</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">담당 IT BA</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">부서</th>
+            <th class="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">역할</th>
+            <th class="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">관리</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          ${mappings.map(m => `
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-5 py-3.5">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                  ${m.domain}
+                </span>
+              </td>
+              <td class="px-5 py-3.5 font-medium text-gray-800">${m.itba.name}</td>
+              <td class="px-5 py-3.5 text-gray-500">${m.itba.department?.name ?? '-'}</td>
+              <td class="px-5 py-3.5">
+                <span class="px-2 py-0.5 rounded text-xs font-medium ${m.itba.role === 'MANAGER' ? 'bg-purple-50 text-purple-700' : 'bg-green-50 text-green-700'}">${m.itba.role}</span>
+              </td>
+              <td class="px-5 py-3.5 text-right">
+                <button onclick="editDomainMapping('${m.id}','${m.domain}','${m.itba.id}')" class="text-xs text-blue-600 hover:text-blue-800 font-medium mr-3">수정</button>
+                <button onclick="deleteDomainMapping('${m.id}','${m.domain}')" class="text-xs text-red-500 hover:text-red-700 font-medium">삭제</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">총 ${mappings.length}개 매핑</div>
+    `;
+  } catch {
+    wrap.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">데이터를 불러오지 못했습니다.</div>`;
+  }
+}
+
+async function openDomainMappingModal(id = null, domain = '', itbaId = '') {
+  const modal = $('#domain-mapping-modal');
+  const title = $('#domain-mapping-modal-title');
+  modal._editId = id;
+  title.textContent = id ? '도메인-IT BA 매핑 수정' : '도메인-IT BA 매핑 추가';
+
+  // 도메인 목록
+  const domainSel = $('#dm-domain');
+  try {
+    const domains = await api('/common/business-domains');
+    domainSel.innerHTML = '<option value="">도메인 선택</option>' +
+      domains.map(d => `<option value="${d}" ${d === domain ? 'selected' : ''}>${d}</option>`).join('');
+  } catch {
+    domainSel.innerHTML = '<option value="">불러오기 실패</option>';
+  }
+
+  // IT BA 목록
+  const itbaSel = $('#dm-itba');
+  try {
+    const users = await api('/common/users/it-ba');
+    itbaSel.innerHTML = '<option value="">IT BA 선택</option>' +
+      users.map(u => `<option value="${u.id}" ${u.id === itbaId ? 'selected' : ''}>${u.name} (${u.department?.name ?? u.role})</option>`).join('');
+  } catch {
+    itbaSel.innerHTML = '<option value="">불러오기 실패</option>';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function editDomainMapping(id, domain, itbaId) {
+  openDomainMappingModal(id, domain, itbaId);
+}
+
+function closeDomainMappingModal() {
+  const modal = $('#domain-mapping-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitDomainMapping() {
+  const domain = $('#dm-domain').value.trim();
+  const itbaId = $('#dm-itba').value;
+  if (!domain) { toast('도메인을 선택해주세요.', 'error'); return; }
+  if (!itbaId) { toast('IT BA를 선택해주세요.', 'error'); return; }
+  try {
+    await api('/admin/domain-itba-mappings', { method: 'POST', body: JSON.stringify({ domain, itbaId }) });
+    toast('저장되었습니다.', 'success');
+    closeDomainMappingModal();
+    await loadDomainMappings();
+  } catch (e) {
+    toast(e.message || '저장에 실패했습니다.', 'error');
+  }
+}
+
+async function deleteDomainMapping(id, domain) {
+  if (!confirm(`"${domain}" 도메인 매핑을 삭제하시겠습니까?`)) return;
+  try {
+    await api(`/admin/domain-itba-mappings/${id}`, { method: 'DELETE' });
+    toast('삭제되었습니다.', 'success');
+    await loadDomainMappings();
+  } catch (e) {
+    toast(e.message || '삭제에 실패했습니다.', 'error');
+  }
+}
+// ────────────────────────────────────────────────────────────────────
+
+let currentCrudModel = 'departments';
+let crudItemsCache = [];
+let crudRelationsCache = {};
+let currentEditingId = null;
+
+async function renderAdminCrud() {
+  const el = $('#page-content');
+  el.innerHTML = `
+    <div class="flex flex-col lg:flex-row gap-6">
+      <!-- 모델 선택 사이드바 -->
+      <aside class="w-full lg:w-64 shrink-0 bg-white rounded-xl border border-gray-200 p-4 space-y-1 self-start shadow-sm">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 mb-2">데이터 선택</div>
+        ${Object.entries(CRUD_MODELS).map(([key, config]) => `
+          <button onclick="switchCrudModel('${key}')" id="crud-model-btn-${key}" 
+            class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-all font-medium ${currentCrudModel === key ? 'bg-green-50 text-green-700 border-l-4 border-green-500' : 'text-gray-600 hover:bg-gray-50'}">
+            <span>${config.label}</span>
+            <span class="text-xs px-2 py-0.5 rounded-full ${currentCrudModel === key ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-500'}" id="crud-count-${key}">-</span>
+          </button>
+        `).join('')}
+      </aside>
+
+      <!-- 데이터 관리 영역 -->
+      <section class="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm" id="crud-main-panel">
+        <div class="p-6 text-gray-400 text-sm">불러오는 중...</div>
+      </section>
+    </div>
+
+    <!-- CRUD 등록/수정 모달 -->
+    <div id="crud-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h3 id="crud-modal-title" class="text-base font-bold text-gray-800">데이터 처리</h3>
+          <button onclick="closeCrudModal()" class="text-gray-400 hover:text-gray-600 text-lg">✕</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="crud-modal-fields"></div>
+        <div class="flex gap-2 p-6 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
+          <button onclick="submitCrudForm()" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm py-2.5 rounded-lg font-medium transition-colors" id="crud-submit-btn">저장</button>
+          <button onclick="closeCrudModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm py-2.5 rounded-lg transition-colors">취소</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  await loadCrudModel(currentCrudModel);
+  updateAllCrudCounts();
+}
+
+async function switchCrudModel(modelKey) {
+  currentCrudModel = modelKey;
+  Object.keys(CRUD_MODELS).forEach(key => {
+    const btn = $(`#crud-model-btn-${key}`);
+    const countSpan = $(`#crud-count-${key}`);
+    if (btn) {
+      if (key === modelKey) {
+        btn.className = "w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-all font-medium bg-green-50 text-green-700 border-l-4 border-green-500";
+        if (countSpan) countSpan.className = "text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-800";
+      } else {
+        btn.className = "w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm text-left transition-all font-medium text-gray-600 hover:bg-gray-50";
+        if (countSpan) countSpan.className = "text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500";
+      }
+    }
+  });
+
+  await loadCrudModel(modelKey);
+}
+
+async function loadCrudModel(modelKey) {
+  const panel = $('#crud-main-panel');
+  if (!panel) return;
+  panel.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm"><div class="animate-pulse mb-2">⚡ 데이터를 동기화하는 중...</div></div>`;
+
+  try {
+    const data = await api(`/admin/crud/${modelKey}`);
+    crudItemsCache = data;
+    renderCrudTable(modelKey, data);
+  } catch (err) {
+    panel.innerHTML = `<div class="p-8 text-center text-red-500 text-sm font-semibold">데이터 로드 실패: ${err.message}</div>`;
+  }
+}
+
+async function updateAllCrudCounts() {
+  for (const key of Object.keys(CRUD_MODELS)) {
+    try {
+      const data = await api(`/admin/crud/${key}`);
+      const badge = $(`#crud-count-${key}`);
+      if (badge) badge.textContent = data.length;
+    } catch {}
+  }
+}
+
+function renderCrudTable(modelKey, items) {
+  const config = CRUD_MODELS[modelKey];
+  const panel = $('#crud-main-panel');
+  if (!panel) return;
+
+  panel.innerHTML = `
+    <div class="px-6 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h2 class="font-bold text-gray-800 text-lg">${config.label}</h2>
+        <p class="text-xs text-gray-400 mt-0.5">데이터를 조회하고 직접 수정/삭제할 수 있습니다.</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <input type="text" id="crud-search-input" placeholder="이름, 내용으로 빠른 검색..." 
+          class="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-400 w-48 sm:w-64" />
+        <button onclick="showCrudForm('${modelKey}')" 
+          class="flex items-center gap-1.5 bg-green-600 text-white text-xs px-4 py-2 rounded-lg hover:bg-green-700 transition-colors font-semibold shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          신규 추가
+        </button>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm" id="crud-data-table">
+        <thead class="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
+          <tr>
+            ${config.displayFields.map(df => {
+              const field = config.fields.find(f => f.name === df.split('.')[0]);
+              return `<th class="px-5 py-3 text-left">${field ? field.label : df}</th>`;
+            }).join('')}
+            <th class="px-5 py-3 text-right">관리</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 text-gray-700" id="crud-table-body">
+          ${renderCrudRows(modelKey, items)}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  const searchInput = $('#crud-search-input');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.toLowerCase();
+      const rows = $$('#crud-table-body tr');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.classList.toggle('hidden', q && !text.includes(q));
+      });
+    });
+  }
+}
+
+function renderCrudRows(modelKey, items) {
+  const config = CRUD_MODELS[modelKey];
+  if (!items || !items.length) {
+    return `<tr><td colspan="${config.displayFields.length + 1}" class="px-5 py-10 text-center text-gray-400">데이터가 없습니다.</td></tr>`;
+  }
+
+  return items.map(item => {
+    return `
+      <tr class="hover:bg-gray-50 transition-colors">
+        ${config.displayFields.map(df => {
+          const val = getNestedValue(item, df);
+          let cellHtml = val;
+          if (val === true || val === 'true') {
+            cellHtml = `<span class="text-green-600 font-semibold bg-green-50 px-2 py-0.5 rounded text-xs">활성</span>`;
+          } else if (val === false || val === 'false') {
+            cellHtml = `<span class="text-red-400 font-semibold bg-red-50 px-2 py-0.5 rounded text-xs">비활성</span>`;
+          } else if (df === 'status' || df === 'priority' || df === 'requiredRole' || df === 'actionType' || df === 'severity') {
+            const labelMap = { 
+              IN_PROGRESS: '진행중', COMPLETED: '완료', REJECTED: '반려', CANCELLED: '취소', DRAFT: '임시저장', READY: '이관준비완료',
+              LOW: '낮음', MEDIUM: '보통', HIGH: '높음', CRITICAL: '긴급',
+              USER: '일반사용자', APPROVER: '결재자', DEVELOPER: '개발자', MANAGER: '책임자', ADMIN: '관리자',
+              SUBMIT: '요청등록', APPROVE: '승인', WORK: '처리', CONFIRM: '검수', CONSENSUS: '합의', COLLABORATE: '협업',
+              OPEN: '오픈', RESOLVED: '해결', CLOSED: '종료'
+            };
+            cellHtml = `<span class="text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded">${labelMap[val] || val}</span>`;
+          } else if (df === 'ticketNumber' || df === 'employeeId' || df === 'code') {
+            cellHtml = `<span class="font-mono text-xs text-gray-500 font-semibold bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5">${val}</span>`;
+          }
+          return `<td class="px-5 py-3.5 whitespace-nowrap text-sm">${cellHtml}</td>`;
+        }).join('')}
+        <td class="px-5 py-3.5 whitespace-nowrap text-right text-xs font-semibold">
+          <button onclick="showCrudForm('${modelKey}', '${item.id}')" class="text-blue-600 hover:text-blue-800 transition mr-3">수정</button>
+          <button onclick="deleteCrudItem('${modelKey}', '${item.id}')" class="text-red-500 hover:text-red-700 transition">삭제</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function getNestedValue(obj, path) {
+  if (!obj) return '-';
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current[part] === undefined || current[part] === null) return '-';
+    current = current[part];
+  }
+  return current;
+}
+
+async function prefetchRelationsForModel(modelKey) {
+  const config = CRUD_MODELS[modelKey];
+  const relationFields = config.fields.filter(f => f.type === 'relation');
+  for (const f of relationFields) {
+    if (!crudRelationsCache[f.relationModel]) {
+      try {
+        const data = await api('/admin/crud/' + f.relationModel);
+        crudRelationsCache[f.relationModel] = data;
+      } catch (err) {
+        console.error('Failed to prefetch relation:', f.relationModel, err);
+        crudRelationsCache[f.relationModel] = [];
+      }
+    }
+  }
+}
+
+async function showCrudForm(modelKey, itemId = null) {
+  currentEditingId = itemId;
+  const config = CRUD_MODELS[modelKey];
+  const modal = $('#crud-modal');
+  const title = $('#crud-modal-title');
+  const fieldsContainer = $('#crud-modal-fields');
+
+  if (!modal || !fieldsContainer) return;
+
+  title.textContent = itemId ? `${config.label} - 데이터 수정` : `${config.label} - 신규 데이터 등록`;
+  fieldsContainer.innerHTML = '<div class="text-gray-400 text-xs py-8 text-center animate-pulse">⚡ 필요한 연관 정보를 동기화하는 중...</div>';
+  modal.classList.remove('hidden');
+
+  await prefetchRelationsForModel(modelKey);
+
+  let item = null;
+  if (itemId) {
+    item = crudItemsCache.find(x => x.id === itemId);
+  }
+
+  fieldsContainer.innerHTML = config.fields.map(f => {
+    let val = '';
+    if (itemId && item) {
+      val = item[f.name] !== undefined ? item[f.name] : '';
+    } else if (f.default !== undefined) {
+      val = f.default;
+    }
+
+    const disabledAttr = (itemId && f.editable === false) ? 'disabled class="form-input bg-gray-50 cursor-not-allowed"' : 'class="form-input"';
+
+    let inputHtml = '';
+    if (f.type === 'text') {
+      inputHtml = `<input type="text" id="crud-field-${f.name}" value="${val}" placeholder="${f.label} 입력..." ${disabledAttr} />`;
+    } else if (f.type === 'number') {
+      inputHtml = `<input type="number" id="crud-field-${f.name}" value="${val}" placeholder="숫자 입력..." ${disabledAttr} />`;
+    } else if (f.type === 'password') {
+      inputHtml = `<input type="password" id="crud-field-${f.name}" placeholder="${f.ph || '비밀번호 입력...'}" class="form-input" />`;
+    } else if (f.type === 'textarea') {
+      inputHtml = `<textarea id="crud-field-${f.name}" rows="3" placeholder="${f.label} 내용 입력..." class="form-input resize-none">${val}</textarea>`;
+    } else if (f.type === 'date') {
+      const dateVal = val ? new Date(val).toISOString().split('T')[0] : '';
+      inputHtml = `<input type="date" id="crud-field-${f.name}" value="${dateVal}" class="form-input" />`;
+    } else if (f.type === 'select') {
+      inputHtml = `
+        <select id="crud-field-${f.name}" class="form-select">
+          ${f.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>`;
+    } else if (f.type === 'boolean') {
+      inputHtml = `
+        <select id="crud-field-${f.name}" class="form-select">
+          <option value="true" ${val === true || String(val) === 'true' ? 'selected' : ''}>활성 (True)</option>
+          <option value="false" ${val === false || String(val) === 'false' ? 'selected' : ''}>비활성 (False)</option>
+        </select>`;
+    } else if (f.type === 'relation') {
+      const relatedItems = crudRelationsCache[f.relationModel] || [];
+      inputHtml = `
+        <select id="crud-field-${f.name}" class="form-select">
+          ${f.skippable ? '<option value="">선택 안 함</option>' : ''}
+          ${relatedItems.map(ri => {
+            const disp = ri[f.displayField] || ri.name || ri.title || ri.ticketNumber || ri.employeeId || ri.id;
+            return `<option value="${ri.id}" ${val === ri.id ? 'selected' : ''}>${disp}</option>`;
+          }).join('')}
+        </select>`;
+    }
+
+    return `
+      <div>
+        <label class="form-label">${f.label} ${f.required ? '<span class="text-red-500">*</span>' : ''}</label>
+        ${inputHtml}
+      </div>
+    `;
+  }).join('');
+}
+
+async function submitCrudForm() {
+  const config = CRUD_MODELS[currentCrudModel];
+  const body = {};
+  
+  for (const f of config.fields) {
+    const el = $(`#crud-field-${f.name}`);
+    if (!el) continue;
+    
+    let val = el.value;
+    if (f.type === 'boolean') {
+      val = val === 'true';
+    } else if (f.type === 'number') {
+      val = val !== '' ? Number(val) : null;
+    } else if (f.type === 'relation' && val === '') {
+      val = null;
+    }
+    
+    if (f.required && (val === '' || val === null || val === undefined)) {
+      toast(`[${f.label}] 필드는 필수 항목입니다.`, 'error');
+      return;
+    }
+    
+    body[f.name] = val;
+  }
+
+  const submitBtn = $('#crud-submit-btn');
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    if (currentEditingId) {
+      await api(`/admin/crud/${currentCrudModel}/${currentEditingId}`, { method: 'PUT', body });
+      toast('성공적으로 수정되었습니다.');
+    } else {
+      await api(`/admin/crud/${currentCrudModel}`, { method: 'POST', body });
+      toast('성공적으로 등록되었습니다.');
+    }
+    closeCrudModal();
+    await loadCrudModel(currentCrudModel);
+    updateAllCrudCounts();
+  } catch (err) {
+    toast(err.message, 'error');
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+  }
+}
+
+async function deleteCrudItem(modelKey, itemId) {
+  if (!confirm('정말로 이 데이터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없으며, 연관된 데이터가 있을 경우 제약에 의해 오류가 발생할 수 있습니다.')) return;
+  try {
+    await api(`/admin/crud/${modelKey}/${itemId}`, { method: 'DELETE' });
+    toast('데이터가 안전하게 삭제되었습니다.');
+    await loadCrudModel(modelKey);
+    updateAllCrudCounts();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function closeCrudModal() {
+  $('#crud-modal')?.classList.add('hidden');
+  currentEditingId = null;
 }
 
 // ── 앱 시작 ───────────────────────────────────────────────

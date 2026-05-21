@@ -1,0 +1,53 @@
+#!/bin/sh
+# pre-push hook: DB 마이그레이션 파일 누락 경고
+#
+# schema.prisma가 변경됐는데 prisma/migrations/에 새 파일이 없으면
+# 경고 메시지를 출력하고 계속할지 확인합니다.
+#
+# 팀원 적용 방법:
+#   git config core.hooksPath .githooks
+#
+# (최초 1회만 실행하면 됩니다)
+
+REMOTE="$1"
+URL="$2"
+
+# upstream 대비 변경 파일 목록 (upstream 없으면 HEAD~1 기준)
+CHANGED=$(git diff --name-only @{u}..HEAD 2>/dev/null)
+if [ -z "$CHANGED" ]; then
+  CHANGED=$(git diff --name-only HEAD~1..HEAD 2>/dev/null)
+fi
+
+CHANGED_SCHEMA=$(echo "$CHANGED" | grep "prisma/schema.prisma")
+NEW_MIGRATION=$(echo "$CHANGED" | grep "prisma/migrations/")
+
+if [ -n "$CHANGED_SCHEMA" ] && [ -z "$NEW_MIGRATION" ]; then
+  echo ""
+  echo "⚠️  ──────────────────────────────────────────────────────────"
+  echo "⚠️   prisma/schema.prisma 변경이 감지됐지만"
+  echo "⚠️   prisma/migrations/ 에 새 마이그레이션 파일이 없습니다."
+  echo "⚠️"
+  echo "⚠️   Push 전에 마이그레이션 파일을 추가해주세요:"
+  echo "⚠️"
+  echo "⚠️   [방법 1] schema.prisma 수정한 경우:"
+  echo "⚠️     npm run db:migrate"
+  echo "⚠️"
+  echo "⚠️   [방법 2] SQL 직접 실행한 경우:"
+  echo "⚠️     prisma/migrations/YYYYMMDDHHMMSS_변경요약/migration.sql 작성 후"
+  echo "⚠️     npx prisma migrate resolve --applied <이름>"
+  echo "⚠️"
+  echo "⚠️   자세한 규칙은 README.md 참고"
+  echo "⚠️  ──────────────────────────────────────────────────────────"
+  echo ""
+  printf "마이그레이션 파일 없이 계속 Push하시겠습니까? (y/N): "
+  read -r REPLY </dev/tty
+  echo ""
+  if [ "$REPLY" != "y" ] && [ "$REPLY" != "Y" ]; then
+    echo "Push가 취소되었습니다. 마이그레이션 파일을 먼저 추가해주세요."
+    exit 1
+  fi
+  echo "⚠️  경고를 무시하고 Push를 진행합니다."
+  echo ""
+fi
+
+exit 0
