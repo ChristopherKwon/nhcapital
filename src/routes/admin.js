@@ -108,6 +108,119 @@ router.patch('/notifications/:id/read', async (req, res, next) => {
   }
 });
 
+// ── 워크플로우 관리 API (ADMIN 전용) ──
+// 티켓 유형 목록 (단계 수 포함)
+router.get('/workflow/ticket-types', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const types = await prisma.ticketType.findMany({
+      include: { _count: { select: { workflowStages: true } } },
+      orderBy: { code: 'asc' },
+    });
+    res.json(types);
+  } catch (err) { next(err); }
+});
+
+// 특정 티켓 유형의 단계 목록
+router.get('/workflow/:ticketTypeId/stages', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const stages = await prisma.workflowStage.findMany({
+      where: { ticketTypeId: req.params.ticketTypeId },
+      include: {
+        handlerDept: { select: { id: true, name: true } },
+        requiredDepartment: { select: { id: true, name: true } },
+      },
+      orderBy: { stageOrder: 'asc' },
+    });
+    res.json(stages);
+  } catch (err) { next(err); }
+});
+
+// 단계 추가
+router.post('/workflow/:ticketTypeId/stages', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { ticketTypeId } = req.params;
+    const { name, actionType, requiredRole, slaTargetHours, isRequesterStage, handlerDeptId, requiredDepartmentId } = req.body;
+    if (!name || !actionType || !requiredRole) return res.status(400).json({ error: '단계명, 액션타입, 필요역할은 필수입니다.' });
+
+    // 마지막 stageOrder + 1
+    const last = await prisma.workflowStage.findFirst({
+      where: { ticketTypeId },
+      orderBy: { stageOrder: 'desc' },
+    });
+    const stageOrder = (last?.stageOrder ?? 0) + 1;
+
+    const stage = await prisma.workflowStage.create({
+      data: {
+        ticketTypeId,
+        name,
+        actionType,
+        requiredRole,
+        stageOrder,
+        slaTargetHours: slaTargetHours ? Number(slaTargetHours) : null,
+        isRequesterStage: Boolean(isRequesterStage),
+        handlerDeptId: handlerDeptId || null,
+        requiredDepartmentId: requiredDepartmentId || null,
+      },
+      include: { handlerDept: { select: { id: true, name: true } } },
+    });
+    res.status(201).json(stage);
+  } catch (err) { next(err); }
+});
+
+// 단계 수정
+router.put('/workflow/stages/:id', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { name, actionType, requiredRole, slaTargetHours, isRequesterStage, handlerDeptId, requiredDepartmentId } = req.body;
+    const stage = await prisma.workflowStage.update({
+      where: { id: req.params.id },
+      data: {
+        name,
+        actionType,
+        requiredRole,
+        slaTargetHours: slaTargetHours ? Number(slaTargetHours) : null,
+        isRequesterStage: Boolean(isRequesterStage),
+        handlerDeptId: handlerDeptId || null,
+        requiredDepartmentId: requiredDepartmentId || null,
+      },
+      include: { handlerDept: { select: { id: true, name: true } } },
+    });
+    res.json(stage);
+  } catch (err) { next(err); }
+});
+
+// 단계 삭제
+router.delete('/workflow/stages/:id', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const stage = await prisma.workflowStage.findUnique({ where: { id: req.params.id } });
+    if (!stage) return res.status(404).json({ error: '단계를 찾을 수 없습니다.' });
+    await prisma.workflowStage.delete({ where: { id: req.params.id } });
+    // 삭제 후 stageOrder 재정렬
+    const remaining = await prisma.workflowStage.findMany({
+      where: { ticketTypeId: stage.ticketTypeId },
+      orderBy: { stageOrder: 'asc' },
+    });
+    await Promise.all(remaining.map((s, i) =>
+      prisma.workflowStage.update({ where: { id: s.id }, data: { stageOrder: i + 1 } })
+    ));
+    res.json({ message: '삭제되었습니다.' });
+  } catch (err) {
+    if (err.code === 'P2003') return res.status(409).json({ error: '이 단계를 참조하는 티켓이 있어 삭제할 수 없습니다.' });
+    next(err);
+  }
+});
+
+// 단계 순서 일괄 변경 [{id, stageOrder}]
+router.patch('/workflow/:ticketTypeId/stages/reorder', authorize('ADMIN'), async (req, res, next) => {
+  try {
+    const { orders } = req.body; // [{id, stageOrder}]
+    if (!Array.isArray(orders)) return res.status(400).json({ error: 'orders 배열이 필요합니다.' });
+    await Promise.all(orders.map(({ id, stageOrder }) =>
+      prisma.workflowStage.update({ where: { id }, data: { stageOrder: Number(stageOrder) } })
+    ));
+    res.json({ message: '순서가 변경되었습니다.' });
+  } catch (err) { next(err); }
+});
+
 // ── 마스터 데이터 CRUD API (ADMIN 전용) ──
 const modelMap = {
   'departments': 'department',
