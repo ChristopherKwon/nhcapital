@@ -183,7 +183,6 @@ model User {
   role         Role     @default(USER)
   departmentId String?
   isActive     Boolean  @default(true)
-  memo         String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
