@@ -4,14 +4,14 @@ let currentUser = null;
 let socket = null;
 let currentPage = null;
 const QUICK_LOGIN_CREDENTIALS = {
-  ADMIN001: 'Admin1234!',
-  MGR001: 'Manager1234!',
-  APR001: 'Approver1234!',
-  APR002: 'Approver1234!',
-  DEV001: 'Dev1234!',
-  DEV002: 'Dev1234!',
-  USR001: 'User1234!',
-  USR002: 'User1234!',
+  ADMIN001: '1234',
+  MGR001: '1234',
+  APR001: '1234',
+  APR002: '1234',
+  DEV001: '1234',
+  DEV002: '1234',
+  USR001: '1234',
+  USR002: '1234',
 };
 
 // ── 유틸리티 ──────────────────────────────────────────────
@@ -63,6 +63,16 @@ const statusLabel   = { IN_PROGRESS: '진행중', COMPLETED: '완료', REJECTED:
 const priorityLabel = { LOW: '낮음', MEDIUM: '보통', HIGH: '높음', CRITICAL: '긴급' };
 const priorityColor = { LOW: 'text-gray-500', MEDIUM: 'text-blue-600', HIGH: 'text-orange-500', CRITICAL: 'text-red-600' };
 const relationLabel = { RELATED_TO: '연관', PARENT_OF: '상위', CHILD_OF: '하위', DUPLICATES: '중복', BLOCKED_BY: '블로킹' };
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[char]);
+}
 
 // ── 대화형 등록 상수 ──
 const CHAT_DEV_SUBCATS    = ['상품개발','신규업무 개발','프로세스 개선','신용전략 변경','규제 대응','성능 개선','장애 대응','재개발'];
@@ -417,7 +427,7 @@ function renderTicketTemplates() {
       tone: 'green',
       desc: '신규 화면, 배치, 인터페이스 개발처럼 요구사항 정리가 중요한 요청에 적합합니다.',
       fields: ['업무 도메인', '대상 시스템', '요청 배경', '기대 효과', 'IT BA'],
-      sample: '[배경/목적]\\n현재 수기 처리 중인 업무를 시스템화하고 싶습니다.\\n\\n[기대 효과]\\n처리 시간 단축 및 오류 감소'
+      sampleLines: ['[배경/목적]', '현재 수기 처리 중인 업무를 시스템화하고 싶습니다.', '', '[기대 효과]', '처리 시간 단축 및 오류 감소']
     },
     {
       code: 'DATA',
@@ -425,7 +435,7 @@ function renderTicketTemplates() {
       tone: 'blue',
       desc: '조회, 추출, 현황 확인 등 데이터 제공 요청을 빠르게 작성하는 템플릿입니다.',
       fields: ['자료 기준일', '추출 조건', '제공 형식', '활용 목적'],
-      sample: '[요청 자료]\\n월별 계약 현황\\n\\n[추출 조건]\\n기준일, 상품군, 부서별 구분 포함'
+      sampleLines: ['[요청 자료]', '월별 계약 현황', '', '[추출 조건]', '기준일, 상품군, 부서별 구분 포함']
     },
     {
       code: 'DATAMOD',
@@ -433,7 +443,7 @@ function renderTicketTemplates() {
       tone: 'amber',
       desc: '원장 또는 기준 데이터 변경처럼 승인과 근거가 중요한 요청을 정돈합니다.',
       fields: ['수정 대상', '변경 전후 값', '근거 문서', 'DB팀 합의'],
-      sample: '[수정 대상]\\n계약번호 또는 고객번호\\n\\n[변경 전/후]\\n변경 전: ...\\n변경 후: ...'
+      sampleLines: ['[수정 대상]', '계약번호 또는 고객번호', '', '[변경 전/후]', '변경 전: ...', '변경 후: ...']
     },
     {
       code: 'CHG',
@@ -441,7 +451,7 @@ function renderTicketTemplates() {
       tone: 'violet',
       desc: '배포, 인프라, DB 작업처럼 계획과 결과 검토가 필요한 변경에 맞춘 템플릿입니다.',
       fields: ['변경 범위', '작업 계획', '영향도', '롤백 계획'],
-      sample: '[변경 범위]\\n운영 서버 배포 및 환경 설정 변경\\n\\n[롤백 계획]\\n직전 버전 재배포'
+      sampleLines: ['[변경 범위]', '운영 서버 배포 및 환경 설정 변경', '', '[롤백 계획]', '직전 버전 재배포']
     },
   ];
 
@@ -449,9 +459,9 @@ function renderTicketTemplates() {
     <div class="template-page">
       <section class="template-hero">
         <div class="template-hero-copy">
-          <div class="template-kicker">Smart Request Studio</div>
-          <h2>요청서의 첫 문장을 더 쉽게 시작하세요</h2>
-          <p>업무 유형별 템플릿으로 누락되는 항목을 줄이고, 승인자가 바로 이해할 수 있는 티켓을 만들 수 있습니다.</p>
+          <div class="template-kicker">Ticket Templates</div>
+          <h2>티켓 템플릿</h2>
+          <p>업무 유형을 선택하면 해당 양식으로 티켓 등록을 시작합니다.</p>
           <div class="template-hero-actions">
             <button onclick="navigate('create-ticket')" class="nh-btn text-white text-sm font-semibold px-5 py-3 rounded-xl">대화형 등록 시작</button>
             <button onclick="navigate('tickets')" class="template-secondary-btn">티켓 목록 보기</button>
@@ -461,11 +471,11 @@ function renderTicketTemplates() {
           ${renderTemplateCharacter()}
           <div class="template-art-card template-art-card-a">
             <span></span>
-            필수 항목 점검
+            DEV · DATA
           </div>
           <div class="template-art-card template-art-card-b">
             <span></span>
-            승인 흐름 추천
+            DATAMOD · CHG
           </div>
         </div>
       </section>
@@ -475,18 +485,18 @@ function renderTicketTemplates() {
           <article class="template-card template-card-${t.tone}">
             <div class="template-card-top">
               <div>
-                <div class="template-code">${t.code}</div>
-                <h3>${t.title}</h3>
+                <div class="template-code">${escapeHtml(t.code)}</div>
+                <h3>${escapeHtml(t.title)}</h3>
               </div>
-              <button onclick="navigate('create-ticket', { template: '${t.code}' })" class="template-icon-btn" title="${t.title} 사용">
+              <button onclick="navigate('create-ticket', { template: '${t.code}' })" class="template-icon-btn" title="${escapeHtml(t.title)} 사용">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M5 12h14m-7-7l7 7-7 7"/></svg>
               </button>
             </div>
-            <p>${t.desc}</p>
+            <p>${escapeHtml(t.desc)}</p>
             <div class="template-fields">
-              ${t.fields.map(f => `<span>${f}</span>`).join('')}
+              ${t.fields.map(f => `<span>${escapeHtml(f)}</span>`).join('')}
             </div>
-            <pre>${t.sample}</pre>
+            <pre>${escapeHtml(t.sampleLines.join('\n'))}</pre>
           </article>
         `).join('')}
       </section>
